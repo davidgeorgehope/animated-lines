@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Diagram Editor Demo</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      font-family: sans-serif;
+    }
+
+    #toolbar {
+      display: flex;
+      padding: 8px;
+      background: #f0f0f0;
+      border-bottom: 1px solid #ccc;
+    }
+
+    #toolbar button {
+      margin-right: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+
+    #canvasContainer {
+      position: relative;
+      width: 100%;
+      height: calc(100vh - 50px);
+      overflow: hidden;
+    }
+
+    #myCanvas {
+      background-color: #fff;
+      border: 1px solid #ccc;
+      display: block;
+      margin: 0 auto;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    /* Inline text editor (for double-click on a shape) */
+    #shapeEditor {
+      position: absolute;
+      display: none;
+      padding: 4px;
+      font-size: 14px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button id="toolSelect">Select/Move</button>
+    <button id="toolRect">Create Rectangle</button>
+    <button id="toolArrow">Draw Arrow</button>
+    <button id="startGifBtn">Start Recording</button>
+    <button id="stopGifBtn">Stop Recording</button>
+  </div>
+
+  <div id="canvasContainer">
+    <canvas id="myCanvas" width="1200" height="700"></canvas>
+    <!-- Inline text editing box -->
+    <input type="text" id="shapeEditor" />
+  </div>
+  <script src="gif.js"></script>
+  <script src="main.js"></script>
+</body>
+</html> 
