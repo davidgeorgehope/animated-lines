@@ -48,6 +48,36 @@ let isResizing = false;          // are we currently resizing a shape?
 let resizeHandleIndex = -1;      // which handle is being dragged?
 const HANDLE_SIZE = 8;           // size of each resize handle
 
+// Reference the context menu div
+const contextMenu = document.getElementById("context-menu");
+
+// Hide the menu on any left-click
+document.addEventListener("click", () => {
+  contextMenu.style.display = "none";
+});
+
+// Right-click on the canvas
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault(); // Prevent default browser menu
+
+  // Get mouse position on the canvas
+  const { x, y } = getCanvasMousePos(e);
+
+  // Check if we right-clicked on a shape
+  const shape = findShapeUnderMouse(x, y);
+
+  // If we did, select it and show our context menu at the mouse location
+  if (shape) {
+    selectedShape = shape;
+    contextMenu.style.left = e.pageX + "px";
+    contextMenu.style.top = e.pageY + "px";
+    contextMenu.style.display = "block";
+  } else {
+    // Otherwise, hide it
+    contextMenu.style.display = "none";
+  }
+});
+
 // Shape class
 class Shape {
   constructor(x, y, w, h, text) {
@@ -666,6 +696,109 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+/***************************************************
+ * LAYER/Z-ORDER FUNCTIONS
+ ***************************************************/
+
+// Bring shape forward by one layer
+function bringShapeForward(shape) {
+  const index = shapes.indexOf(shape);
+  if (index >= 0 && index < shapes.length - 1) {
+    // remove from current position
+    shapes.splice(index, 1);
+    // insert at the next higher position
+    shapes.splice(index + 1, 0, shape);
+  }
+}
+
+// Send shape backward by one layer
+function sendShapeBackward(shape) {
+  const index = shapes.indexOf(shape);
+  if (index > 0) {
+    // remove from the array
+    shapes.splice(index, 1);
+    // insert it one position lower
+    shapes.splice(index - 1, 0, shape);
+  }
+}
+
+// Bring shape fully to the front
+function bringShapeToFront(shape) {
+  const index = shapes.indexOf(shape);
+  if (index >= 0) {
+    shapes.splice(index, 1);
+    shapes.push(shape);
+  }
+}
+
+// Send shape fully to the back
+function sendShapeToBack(shape) {
+  const index = shapes.indexOf(shape);
+  if (index >= 0) {
+    shapes.splice(index, 1);
+    shapes.unshift(shape);
+  }
+}
+
+/***************************************************
+ * EXAMPLE UI HOOKS OR KEYBOARD SHORTCUTS
+ ***************************************************/
+
+
+
 /**************************************************
  * End of main.js
  **************************************************/ 
+
+// Add proper context menu event listeners
+const contextBringForward = document.getElementById("ctx-bring-forward");
+const contextSendBackward = document.getElementById("ctx-send-backward");
+const contextBringFront = document.getElementById("ctx-bring-front");
+const contextSendBack = document.getElementById("ctx-send-back");
+const contextDelete = document.getElementById("ctx-delete");
+
+if (contextBringForward) {
+    contextBringForward.addEventListener("click", () => {
+        if (selectedShape) {
+            bringShapeForward(selectedShape);
+        }
+        contextMenu.style.display = "none";
+    });
+}
+
+if (contextSendBackward) {
+    contextSendBackward.addEventListener("click", () => {
+        if (selectedShape) {
+            sendShapeBackward(selectedShape);
+        }
+        contextMenu.style.display = "none";
+    });
+}
+
+if (contextBringFront) {
+    contextBringFront.addEventListener("click", () => {
+        if (selectedShape) {
+            bringShapeToFront(selectedShape);
+        }
+        contextMenu.style.display = "none";
+    });
+}
+
+if (contextSendBack) {
+    contextSendBack.addEventListener("click", () => {
+        if (selectedShape) {
+            sendShapeToBack(selectedShape);
+        }
+        contextMenu.style.display = "none";
+    });
+}
+
+if (contextDelete) {
+    contextDelete.addEventListener("click", () => {
+        if (selectedShape) {
+            removeShapeById(selectedShape.id);
+            selectedShape = null;
+        }
+        contextMenu.style.display = "none";
+    });
+} 
