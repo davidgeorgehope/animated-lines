@@ -42,6 +42,12 @@ let arrowEndPos = { x: 0, y: 0 };
 let isRecordingGIF = false;
 let gif = null;  // will hold the GIF instance from gif.js
 
+// --- ADD: Variables to track selection and resizing state ---
+let selectedShape = null;        // which shape (if any) is selected
+let isResizing = false;          // are we currently resizing a shape?
+let resizeHandleIndex = -1;      // which handle is being dragged?
+const HANDLE_SIZE = 8;           // size of each resize handle
+
 // Shape class
 class Shape {
   constructor(x, y, w, h, text) {
@@ -89,20 +95,26 @@ class Shape {
 
 // ========== ADD: New ImageShape class ==========
 class ImageShape extends Shape {
-  constructor(x, y, img) {
-    super(x, y, 0, 0, ""); // Use the base Shape constructor
+  constructor(x, y, w, h, img) {
+    // Let the parent constructor store x, y, width, height
+    super(x, y, w, h, ""); 
     this.img = img;
-    // We'll update width/height after the image loads
-    this.width = img.width;
-    this.height = img.height;
   }
 
   draw(ctx) {
     if (!this.img) return;
-    ctx.drawImage(this.img, this.x, this.y);
-    // Keep this.width/height in sync if image is not fully loaded initially
-    this.width = this.img.width;
-    this.height = this.img.height;
+    // Draw using the shape's current width & height so the user can resize
+    ctx.drawImage(this.img, this.x, this.y, this.width, this.height);
+  }
+
+  // (Optional) If you want a bounding-box check:
+  containsPoint(px, py) {
+    return (
+      px >= this.x &&
+      px <= this.x + this.width &&
+      py >= this.y &&
+      py <= this.y + this.height
+    );
   }
 }
 
@@ -132,6 +144,34 @@ stopGifBtn.addEventListener("click", stopRecordingGIF);
 canvas.addEventListener("mousedown", (e) => {
   const { x, y } = getCanvasMousePos(e);
 
+  // First, check if we're clicking on a resize handle of the currently selected shape
+  if (selectedShape) {
+    const handleIndex = getHandleIndexAtPos(selectedShape, x, y);
+    if (handleIndex !== -1) {
+      // We clicked on a handle: go into "resizing" mode
+      isResizing = true;
+      resizeHandleIndex = handleIndex;
+      return;
+    }
+  }
+
+  // If not clicking a handle, see if we're clicking on a shape to either select or drag
+  const clickedShape = findShapeUnderMouse(x, y);
+  if (clickedShape) {
+    // If "select" tool is active, we might just select the shape...
+    if (currentTool === "select") {
+      // Set it as selected
+      selectedShape = clickedShape;
+      // Also prepare to drag if needed
+      draggingShape = clickedShape;
+      dragOffsetX = x - clickedShape.x;
+      dragOffsetY = y - clickedShape.y;
+    }
+  } else {
+    // If user clicks empty space, deselect anything
+    selectedShape = null;
+  }
+
   if (currentTool === "rect") {
     // Prompt for text
     const shapeText = prompt("Enter text for the rectangle:", "Shape");
@@ -150,20 +190,17 @@ canvas.addEventListener("mousedown", (e) => {
       arrowEndPos = { x, y };
     }
   }
-  else if (currentTool === "select") {
-    // Start dragging if shape is clicked
-    const clickedShape = findShapeUnderMouse(x, y);
-    if (clickedShape) {
-      draggingShape = clickedShape;
-      dragOffsetX = x - clickedShape.x;
-      dragOffsetY = y - clickedShape.y;
-    }
-  }
 });
 
 // Mousemove
 canvas.addEventListener("mousemove", (e) => {
   const { x, y } = getCanvasMousePos(e);
+
+  if (isResizing && selectedShape) {
+    // We're dragging a handle to resize the selected shape
+    resizeShape(selectedShape, resizeHandleIndex, x, y);
+    return; // no further dragging logic
+  }
 
   if (draggingShape) {
     // Move the shape
@@ -179,19 +216,23 @@ canvas.addEventListener("mousemove", (e) => {
 
 // Mouseup
 canvas.addEventListener("mouseup", (e) => {
+  // Get mouse position from the event
   const { x, y } = getCanvasMousePos(e);
+
+  if (isResizing) {
+    isResizing = false;
+    resizeHandleIndex = -1;
+  }
 
   if (draggingShape) {
     draggingShape = null;
   }
 
   if (isDrawingLine) {
-    // If we release on another shape, create an arrow
     const releasedShape = findShapeUnderMouse(x, y);
     if (releasedShape && releasedShape !== arrowStartShape) {
       arrows.push({ fromId: arrowStartShape.id, toId: releasedShape.id });
     }
-    // Reset arrow drawing state
     isDrawingLine = false;
     arrowStartShape = null;
   }
@@ -254,7 +295,6 @@ function getCanvasMousePos(e) {
 
 // Compute intersection of line from shape to the target with the shape's edges
 function getEdgeIntersection(shape, targetX, targetY) {
-  // shape center
   const center = shape.getCenter();
   const dx = targetX - center.x;
   const dy = targetY - center.y;
@@ -347,6 +387,11 @@ function animate() {
     drawTempLine(ctx, fromPt.x, fromPt.y, arrowEndPos.x, arrowEndPos.y);
   }
 
+  // --- ADD: If there's a selected shape, draw its resize handles ---
+  if (selectedShape) {
+    drawResizeHandles(ctx, selectedShape);
+  }
+
   // Update dash offset
   dashOffset += 2;
   if (dashOffset > 10000) {
@@ -374,7 +419,7 @@ function drawArrow(ctx, fromX, fromY, toX, toY) {
   ctx.save();
   ctx.setLineDash([6, 4]);
   ctx.lineDashOffset = -dashOffset;
-  ctx.strokeStyle = "#ff0000";
+  ctx.strokeStyle = "#000000";
   ctx.lineWidth = 2;
 
   ctx.beginPath();
@@ -414,7 +459,7 @@ function drawArrowhead(ctx, fromX, fromY, toX, toY) {
   ctx.lineTo(-headLen, headLen / 2);
   ctx.lineTo(-headLen, -headLen / 2);
   ctx.closePath();
-  ctx.fillStyle = "#ff0000";
+  ctx.fillStyle = "#000000";
   ctx.fill();
   ctx.restore();
 }
@@ -487,15 +532,13 @@ canvas.addEventListener("drop", (e) => {
   const dropX = e.clientX - rect.left;
   const dropY = e.clientY - rect.top;
 
-  // If there are multiple files, handle them one by one
   const files = e.dataTransfer.files;
   if (!files || files.length === 0) return;
 
-  // For simplicity, just handle the first file
   const file = files[0];
   const fileReader = new FileReader();
 
-  // Only proceed if it's an image
+  // Make sure it's an image
   if (!file.type.startsWith("image/")) {
     console.log("Dropped file is not an image.");
     return;
@@ -504,8 +547,8 @@ canvas.addEventListener("drop", (e) => {
   fileReader.onload = (evt) => {
     const img = new Image();
     img.onload = () => {
-      // Create a new ImageShape at the drop position
-      const imageShape = new ImageShape(dropX, dropY, img);
+      // Use the natural width/height as a default. User can resize later.
+      const imageShape = new ImageShape(dropX, dropY, img.width, img.height, img);
       shapes.push(imageShape);
     };
     img.src = evt.target.result;
@@ -516,6 +559,112 @@ canvas.addEventListener("drop", (e) => {
 
 // Start the animation loop
 animate();
+
+// --- ADD: Function to get position of all resize handles for a shape ---
+// We'll define an array of (x, y) coords (for corners + optionally edges).
+function getResizeHandles(shape) {
+  const handles = [];
+  const { x, y, width, height } = shape;
+  // Corners: top-left, top-right, bottom-left, bottom-right
+  handles.push({ x: x,         y: y         });              // top-left
+  handles.push({ x: x+width,  y: y         });              // top-right
+  handles.push({ x: x,         y: y+height });              // bottom-left
+  handles.push({ x: x+width,  y: y+height });              // bottom-right
+  
+  // If you want mid-edge handles, uncomment:
+  // handles.push({ x: x + width/2, y: y          }); // top edge
+  // handles.push({ x: x + width/2, y: y + height }); // bottom edge
+  // handles.push({ x: x,           y: y + height/2 }); // left edge
+  // handles.push({ x: x + width,   y: y + height/2 }); // right edge
+  
+  return handles;
+}
+
+// --- ADD: Check if mouse is in any handle bounding box ---
+function getHandleIndexAtPos(shape, mouseX, mouseY) {
+  if (!shape) return -1;
+  const handles = getResizeHandles(shape);
+  for (let i = 0; i < handles.length; i++) {
+    const hx = handles[i].x;
+    const hy = handles[i].y;
+    // We'll treat each handle as a small square
+    if (
+      mouseX >= hx - HANDLE_SIZE/2 && mouseX <= hx + HANDLE_SIZE/2 &&
+      mouseY >= hy - HANDLE_SIZE/2 && mouseY <= hy + HANDLE_SIZE/2
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// --- ADD: Actual resize logic depending on which handle is grabbed ---
+function resizeShape(shape, handleIndex, mouseX, mouseY) {
+  const { x, y, width, height } = shape;
+  const newX = x;
+  const newY = y;
+  let newWidth = width;
+  let newHeight = height;
+
+  // handleIndex in [0..3] for corners (or more if you included edges)
+  switch (handleIndex) {
+    case 0: // top-left corner
+      newWidth = width + (x - mouseX);
+      newHeight = height + (y - mouseY);
+      shape.x = mouseX;
+      shape.y = mouseY;
+      break;
+    case 1: // top-right corner
+      newWidth = mouseX - x;
+      newHeight = height + (y - mouseY);
+      shape.y = mouseY;
+      break;
+    case 2: // bottom-left corner
+      newWidth = width + (x - mouseX);
+      newHeight = mouseY - y;
+      shape.x = mouseX;
+      break;
+    case 3: // bottom-right corner
+      newWidth = mouseX - x;
+      newHeight = mouseY - y;
+      break;
+    // (If you added mid-edge handles, handle them here)
+  }
+
+  // Enforce minimum size values if desired:
+  shape.width = Math.max(newWidth, 20);
+  shape.height = Math.max(newHeight, 20);
+}
+
+// --- ADD: Draw resize handles if a shape is selected ---
+function drawResizeHandles(ctx, shape) {
+  const handles = getResizeHandles(shape);
+  ctx.save();
+  ctx.fillStyle = "red";
+  handles.forEach((h) => {
+    ctx.fillRect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE);
+  });
+  ctx.restore();
+}
+
+// ================== DELETE / REMOVAL LOGIC ==================
+
+// 1) Helper function to remove a shape by ID from both shapes & arrows
+function removeShapeById(id) {
+  // Remove the shape itself
+  shapes = shapes.filter((s) => s.id !== id);
+  // Remove any arrows that link to/from this shape
+  arrows = arrows.filter((arrow) => arrow.fromId !== id && arrow.toId !== id);
+}
+
+// 2) Keyboard event to listen for "Delete" or "Backspace"
+document.addEventListener("keydown", (e) => {
+  // Some browsers interpret "Backspace" differently; here we also handle "Delete" explicitly
+  if ((e.key === "Delete" || e.key === "Backspace") && selectedShape) {
+    removeShapeById(selectedShape.id);
+    selectedShape = null; // Clear selection
+  }
+});
 
 /**************************************************
  * End of main.js
