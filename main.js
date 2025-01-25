@@ -152,6 +152,52 @@ class ImageShape extends Shape {
   }
 }
 
+// A basic TextShape class
+class TextShape {
+  constructor(x, y, text) {
+    this.id = shapeCounter++;
+    this.x = x;
+    this.y = y;
+    this.text = text;
+    // Optional: measure text to store width/height for bounding box
+    const tempCtx = document.createElement("canvas").getContext("2d");
+    tempCtx.font = "14px Arial";
+    const metrics = tempCtx.measureText(text);
+    this.width = metrics.width;
+    // Approximate a line height for selection or containsPoint checks
+    this.height = 16; 
+  }
+
+  draw(ctx) {
+    ctx.fillStyle = "#000";
+    ctx.font = "14px Arial";
+    ctx.fillText(this.text, this.x, this.y);
+  }
+
+  containsPoint(px, py) {
+    // Simple bounding-box test, if you want selection or dragging
+    return (
+      px >= this.x &&
+      px <= this.x + this.width &&
+      py >= this.y - this.height &&
+      py <= this.y
+    );
+  }
+
+  getCenter() {
+    return {
+      x: this.x + this.width / 2,
+      y: this.y - this.height / 2
+    };
+  }
+}
+// Reference the "Text" button
+const textBtn = document.getElementById("toolText");
+textBtn.addEventListener("click", () => {
+  currentTool = "text";
+  clearEditor(); // If you have a function that hides the inline editor
+});
+
 // ============= TOOLBAR HANDLERS =============
 selectBtn.addEventListener("click", () => {
   currentTool = "select";
@@ -222,6 +268,14 @@ canvas.addEventListener("mousedown", (e) => {
       isDrawingLine = true;
       arrowStartShape = clickedShape;
       arrowEndPos = { x, y };
+    }
+  }
+
+  if (currentTool === "text") {
+    const shapeText = prompt("Enter your text:", "New Text");
+    if (shapeText !== null) {
+      const newTextShape = new TextShape(x, y, shapeText);
+      shapes.push(newTextShape);
     }
   }
 });
