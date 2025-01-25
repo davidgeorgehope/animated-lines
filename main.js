@@ -7,6 +7,10 @@
 const canvas = document.getElementById("myCanvas");
 const ctx = canvas.getContext("2d");
 
+// Set to 1200×627 for LinkedIn
+canvas.width = 1200;
+canvas.height = 627;
+
 // Toolbar buttons
 const selectBtn = document.getElementById("toolSelect");
 const rectBtn = document.getElementById("toolRect");
@@ -378,7 +382,14 @@ function getEdgeIntersection(shape, targetX, targetY) {
 
 // Draw everything in an animation loop (for the dotted-line "marching" effect)
 function animate() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Fill the entire canvas with white
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Now clearRect() isn't strictly necessary, but if you want
+  // to preserve partial transparency, you could skip fillRect.
+  // For a solid background, remove clearRect or comment it out.
+  // ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Draw shapes
   shapes.forEach((shape) => {
