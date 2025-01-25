@@ -1,6 +1,7 @@
 /**************************************************
  * main.js - Extended "Visio-like" Diagram Editor
  *           Now with GIF export using gif.js
+ *           Now supporting image drag & drop
  **************************************************/
 
 const canvas = document.getElementById("myCanvas");
@@ -83,6 +84,25 @@ class Shape {
       x: this.x + this.width / 2,
       y: this.y + this.height / 2,
     };
+  }
+}
+
+// ========== ADD: New ImageShape class ==========
+class ImageShape extends Shape {
+  constructor(x, y, img) {
+    super(x, y, 0, 0, ""); // Use the base Shape constructor
+    this.img = img;
+    // We'll update width/height after the image loads
+    this.width = img.width;
+    this.height = img.height;
+  }
+
+  draw(ctx) {
+    if (!this.img) return;
+    ctx.drawImage(this.img, this.x, this.y);
+    // Keep this.width/height in sync if image is not fully loaded initially
+    this.width = this.img.width;
+    this.height = this.img.height;
   }
 }
 
@@ -453,6 +473,46 @@ function stopRecordingGIF() {
     gif.render(); // start async rendering
   }
 }
+
+// ========== ADD: Canvas drag/drop listeners ==========
+canvas.addEventListener("dragover", (e) => {
+  e.preventDefault(); // Allow dropping
+});
+
+canvas.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+
+  // Get where on the canvas the file is dropped
+  const dropX = e.clientX - rect.left;
+  const dropY = e.clientY - rect.top;
+
+  // If there are multiple files, handle them one by one
+  const files = e.dataTransfer.files;
+  if (!files || files.length === 0) return;
+
+  // For simplicity, just handle the first file
+  const file = files[0];
+  const fileReader = new FileReader();
+
+  // Only proceed if it's an image
+  if (!file.type.startsWith("image/")) {
+    console.log("Dropped file is not an image.");
+    return;
+  }
+
+  fileReader.onload = (evt) => {
+    const img = new Image();
+    img.onload = () => {
+      // Create a new ImageShape at the drop position
+      const imageShape = new ImageShape(dropX, dropY, img);
+      shapes.push(imageShape);
+    };
+    img.src = evt.target.result;
+  };
+
+  fileReader.readAsDataURL(file);
+});
 
 // Start the animation loop
 animate();
