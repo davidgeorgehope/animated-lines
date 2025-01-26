@@ -82,6 +82,10 @@ canvas.addEventListener("contextmenu", (e) => {
   }
 });
 
+// Get references to newly added elements
+const fontSizeSelect = document.getElementById("fontSizeSelect");
+const fontFamilySelect = document.getElementById("fontFamilySelect");
+
 // Shape class
 class Shape {
   constructor(x, y, w, h, text) {
@@ -152,30 +156,33 @@ class ImageShape extends Shape {
   }
 }
 
-// A basic TextShape class
+// A basic TextShape class with configurable font
 class TextShape {
-  constructor(x, y, text) {
+  constructor(x, y, text, fontSize = 14, fontFamily = 'Arial') {
     this.id = shapeCounter++;
     this.x = x;
     this.y = y;
     this.text = text;
-    // Optional: measure text to store width/height for bounding box
+    this.fontSize = fontSize;
+    this.fontFamily = fontFamily;
+
+    // Measure text width for bounding box
     const tempCtx = document.createElement("canvas").getContext("2d");
-    tempCtx.font = "14px Arial";
-    const metrics = tempCtx.measureText(text);
+    tempCtx.font = `${this.fontSize}px ${this.fontFamily}`;
+    const metrics = tempCtx.measureText(this.text);
     this.width = metrics.width;
-    // Approximate a line height for selection or containsPoint checks
-    this.height = 16; 
+    // Approximate line height
+    this.height = this.fontSize;
   }
 
   draw(ctx) {
     ctx.fillStyle = "#000";
-    ctx.font = "14px Arial";
+    ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     ctx.fillText(this.text, this.x, this.y);
   }
 
   containsPoint(px, py) {
-    // Simple bounding-box test, if you want selection or dragging
+    // Simple bounding-box check if you want selection
     return (
       px >= this.x &&
       px <= this.x + this.width &&
@@ -185,12 +192,14 @@ class TextShape {
   }
 
   getCenter() {
+    // Rough center for arrow connections
     return {
       x: this.x + this.width / 2,
       y: this.y - this.height / 2
     };
   }
 }
+
 // Reference the "Text" button
 const textBtn = document.getElementById("toolText");
 textBtn.addEventListener("click", () => {
@@ -274,7 +283,11 @@ canvas.addEventListener("mousedown", (e) => {
   if (currentTool === "text") {
     const shapeText = prompt("Enter your text:", "New Text");
     if (shapeText !== null) {
-      const newTextShape = new TextShape(x, y, shapeText);
+      // Grab chosen font size/family from the dropdowns
+      const fontSize = parseInt(fontSizeSelect.value) || 14;
+      const fontFamily = fontFamilySelect.value || 'Arial';
+      // Create a new TextShape
+      const newTextShape = new TextShape(x, y, shapeText, fontSize, fontFamily);
       shapes.push(newTextShape);
     }
   }

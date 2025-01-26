@@ -13,6 +13,7 @@
 
     #toolbar {
       display: flex;
+      align-items: center;
       padding: 8px;
       background: #f0f0f0;
       border-bottom: 1px solid #ccc;
@@ -22,6 +23,12 @@
       margin-right: 8px;
       padding: 6px 12px;
       cursor: pointer;
+    }
+
+    /* NEW: small style for our selects so they line up with the buttons */
+    #toolbar select {
+      margin-right: 8px;
+      padding: 4px 8px;
     }
 
     #canvasContainer {
@@ -82,6 +89,23 @@
     <button id="startGifBtn">Start Recording</button>
     <button id="stopGifBtn">Stop Recording</button>
     <button id="toolText">Text</button>
+
+    <!-- NEW: Font size & family dropdowns -->
+    <select id="fontSizeSelect">
+      <option value="12">12px</option>
+      <option value="14" selected>14px</option>
+      <option value="16">16px</option>
+      <option value="18">18px</option>
+      <option value="24">24px</option>
+    </select>
+
+    <select id="fontFamilySelect">
+      <option value="Arial" selected>Arial</option>
+      <option value="Times New Roman">Times New Roman</option>
+      <option value="Courier New">Courier New</option>
+      <option value="Verdana">Verdana</option>
+    </select>
+
   </div>
 
   <div id="canvasContainer">
