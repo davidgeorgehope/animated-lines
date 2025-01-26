@@ -85,6 +85,7 @@ canvas.addEventListener("contextmenu", (e) => {
 // Get references to newly added elements
 const fontSizeSelect = document.getElementById("fontSizeSelect");
 const fontFamilySelect = document.getElementById("fontFamilySelect");
+const arrowColorPicker = document.getElementById("arrowColorPicker");
 
 // Shape class
 class Shape {
@@ -258,10 +259,22 @@ canvas.addEventListener("mousedown", (e) => {
       draggingShape = clickedShape;
       dragOffsetX = x - clickedShape.x;
       dragOffsetY = y - clickedShape.y;
+      // --- ADD: Deselect any arrow if a shape is selected ---
+      selectedArrow = null;
     }
   } else {
     // If user clicks empty space, deselect anything
     selectedShape = null;
+    // --- ADD: Check if we clicked on an arrow to select it ---
+    if (currentTool === "select") {
+      const clickedArrow = findArrowUnderMouse(x, y);
+      if (clickedArrow) {
+        selectedArrow = clickedArrow;
+        selectedShape = null; // Deselect any shape
+      } else {
+        selectedArrow = null; // Deselect arrow if clicking on canvas bg
+      }
+    }
   }
 
   if (currentTool === "rect") {
@@ -495,7 +508,7 @@ function animate() {
         fromShape.x + fromShape.width / 2,
         fromShape.y + fromShape.height / 2
       );
-      drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y);
+      drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow.color);
     }
   });
 
@@ -539,11 +552,11 @@ function animate() {
 }
 
 // Draw a dotted arrow for a final connection
-function drawArrow(ctx, fromX, fromY, toX, toY) {
+function drawArrow(ctx, fromX, fromY, toX, toY, color = "#000000") {
   ctx.save();
   ctx.setLineDash([6, 4]);
   ctx.lineDashOffset = -dashOffset;
-  ctx.strokeStyle = "#000000";
+  ctx.strokeStyle = color;
   ctx.lineWidth = 2;
 
   ctx.beginPath();
@@ -1110,6 +1123,59 @@ const loadBtn = document.getElementById("loadBtn");
 // Attach click listeners to run our save/load functions
 saveBtn.addEventListener("click", saveDiagram);
 loadBtn.addEventListener("click", loadDiagramFromFile);
+
+// ----------------------------------------------------------------------
+// All previous code in main.js (Shape classes, event handlers, etc.) remains below
+// ---------------------------------------------------------------------- 
+
+// --- ADD: Function to find arrow under mouse ---
+function findArrowUnderMouse(x, y) {
+  for (let i = arrows.length - 1; i >= 0; i--) {
+    const arrow = arrows[i];
+    const fromShape = shapes.find((s) => s.id === arrow.fromId);
+    const toShape = shapes.find((s) => s.id === arrow.toId);
+    if (fromShape && toShape) {
+      const fromPt = fromShape.getCenter(); // Or getEdgeIntersection if more precise
+      const toPt = toShape.getCenter();   // Or getEdgeIntersection
+      if (isPointNearLine(x, y, fromPt.x, fromPt.y, toPt.x, toPt.y, 5)) { // 5px threshold
+        return arrow;
+      }
+    }
+  }
+  return null;
+}
+
+// --- ADD: Helper function to check if point is near a line ---
+function isPointNearLine(px, py, x1, y1, x2, y2, threshold) {
+  const dist = pointLineDistance(px, py, x1, y1, x2, y2);
+  return dist <= threshold;
+}
+
+// --- ADD: Function to calculate point-to-line distance ---
+function pointLineDistance(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+
+  if (dx === 0 && dy === 0) {
+    // Line is just a point
+    return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+  }
+
+  const t = ((px - x1) * dx + (py - y1) * dy) / (dx ** 2 + dy ** 2);
+  const clampedT = Math.max(0, Math.min(1, t)); // Clamp t to be within 0-1
+
+  const closestX = x1 + clampedT * dx;
+  const closestY = y1 + clampedT * dy;
+
+  return Math.sqrt((px - closestX) ** 2 + (py - closestY) ** 2);
+}
+
+// --- ADD: Listen for changes to the arrow color picker ---
+arrowColorPicker.addEventListener("input", (e) => {
+  if (selectedArrow) {
+    selectedArrow.color = e.target.value;
+  }
+});
 
 // ----------------------------------------------------------------------
 // All previous code in main.js (Shape classes, event handlers, etc.) remains below
