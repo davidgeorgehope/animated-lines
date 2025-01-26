@@ -564,7 +564,7 @@ function drawArrow(ctx, fromX, fromY, toX, toY, color = "#000000") {
   ctx.lineTo(toX, toY);
   ctx.stroke();
 
-  drawArrowhead(ctx, fromX, fromY, toX, toY);
+  drawArrowhead(ctx, fromX, fromY, toX, toY, color);
   ctx.restore();
 }
 
@@ -584,7 +584,7 @@ function drawTempLine(ctx, fromX, fromY, toX, toY) {
 }
 
 // Basic arrowhead
-function drawArrowhead(ctx, fromX, fromY, toX, toY) {
+function drawArrowhead(ctx, fromX, fromY, toX, toY, color = "#000000") {
   const headLen = 10;
   const angle = Math.atan2(toY - fromY, toX - fromX);
 
@@ -596,7 +596,7 @@ function drawArrowhead(ctx, fromX, fromY, toX, toY) {
   ctx.lineTo(-headLen, headLen / 2);
   ctx.lineTo(-headLen, -headLen / 2);
   ctx.closePath();
-  ctx.fillStyle = "#000000";
+  ctx.fillStyle = color;
   ctx.fill();
   ctx.restore();
 }
