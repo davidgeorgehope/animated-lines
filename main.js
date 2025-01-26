@@ -159,12 +159,12 @@ class ImageShape extends Shape {
   }
 }
 
-// A basic TextShape class with configurable font
+// Updated TextShape class
 class TextShape {
   constructor(x, y, text, fontSize = 14, fontFamily = 'Arial') {
     this.id = shapeCounter++;
     this.x = x;
-    this.y = y;
+    this.y = y; // Now represents the top of the text
     this.text = text;
     this.fontSize = fontSize;
     this.fontFamily = fontFamily;
@@ -174,31 +174,31 @@ class TextShape {
     tempCtx.font = `${this.fontSize}px ${this.fontFamily}`;
     const metrics = tempCtx.measureText(this.text);
     this.width = metrics.width;
-    // Approximate line height
-    this.height = this.fontSize;
+    this.height = this.fontSize; // Height is now just the font size
   }
 
   draw(ctx) {
     ctx.fillStyle = "#000";
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
-    ctx.fillText(this.text, this.x, this.y);
+    // Adjust the y-coordinate to account for the baseline
+    ctx.fillText(this.text, this.x, this.y + this.height);
   }
 
   containsPoint(px, py) {
-    // Simple bounding-box check if you want selection
+    // Simple bounding-box check using top-left coordinates
     return (
       px >= this.x &&
       px <= this.x + this.width &&
-      py >= this.y - this.height &&
-      py <= this.y
+      py >= this.y &&
+      py <= this.y + this.height
     );
   }
 
   getCenter() {
-    // Rough center for arrow connections
+    // Center of the text bounding box
     return {
       x: this.x + this.width / 2,
-      y: this.y - this.height / 2
+      y: this.y + this.height / 2
     };
   }
 }
