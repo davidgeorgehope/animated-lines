@@ -95,6 +95,9 @@ class Shape {
     this.width = w;
     this.height = h;
     this.text = text;
+    // Add default font properties
+    this.fontSize = 14;
+    this.fontFamily = 'Arial';
   }
 
   draw(ctx) {
@@ -104,12 +107,12 @@ class Shape {
     ctx.fillRect(this.x, this.y, this.width, this.height);
     ctx.strokeRect(this.x, this.y, this.width, this.height);
 
-    // Draw text
+    // Draw text with custom font settings
     ctx.fillStyle = "#000";
-    ctx.font = "14px Arial";
+    ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     const metrics = ctx.measureText(this.text);
     const textX = this.x + (this.width - metrics.width) / 2;
-    const textY = this.y + this.height / 2 + 5;
+    const textY = this.y + this.height / 2 + (this.fontSize / 3); // Adjusted for better vertical centering
     ctx.fillText(this.text, textX, textY);
   }
 
@@ -344,22 +347,35 @@ canvas.addEventListener("dblclick", (e) => {
   const { x, y } = getCanvasMousePos(e);
   const shape = findShapeUnderMouse(x, y);
   if (shape) {
-    // Position the editor near the shape
     shapeEditorInput.style.display = "block";
-    shapeEditorInput.style.left = shape.x + "px";
-    shapeEditorInput.style.top = (shape.y + shape.height + 5) + "px";
+
+    if (shape instanceof TextShape) {
+      // Position the editor near the text
+      // For a TextShape, y is the baseline of the text, so shift upward by shape.height
+      // to place the editor above or at the text area
+      shapeEditorInput.style.left = shape.x + "px";
+      shapeEditorInput.style.top = (shape.y - shape.height - 5) + "px";
+    } else {
+      // Standard rectangle shape
+      shapeEditorInput.style.left = shape.x + "px";
+      shapeEditorInput.style.top = (shape.y + shape.height + 5) + "px";
+    }
+
+    // Populate the editor with existing text
     shapeEditorInput.value = shape.text;
     shapeEditorInput.focus();
 
-    // When user finishes editing
+    // When user finishes editing via ENTER
     shapeEditorInput.onkeydown = (evt) => {
       if (evt.key === "Enter") {
-        shape.text = shapeEditorInput.value;
+        updateShapeText(shape, shapeEditorInput.value);
         clearEditor();
       }
     };
+
+    // When user clicks away
     shapeEditorInput.onblur = () => {
-      shape.text = shapeEditorInput.value;
+      updateShapeText(shape, shapeEditorInput.value);
       clearEditor();
     };
   }
@@ -879,4 +895,55 @@ if (contextDelete) {
         }
         contextMenu.style.display = "none";
     });
-} 
+}
+
+function updateShapeText(shape, newText) {
+  // Update the text in either a rectangle or a TextShape
+  shape.text = newText;
+
+  // If this is a TextShape, re-measure the bounding box 
+  // in case the user typed a longer or shorter string
+  if (shape instanceof TextShape) {
+    const tempCtx = document.createElement("canvas").getContext("2d");
+    tempCtx.font = `${shape.fontSize}px ${shape.fontFamily}`;
+    const metrics = tempCtx.measureText(shape.text);
+    shape.width = metrics.width;
+    shape.height = shape.fontSize; 
+  }
+}
+
+// Add event listeners for the font controls
+fontSizeSelect.addEventListener("change", () => {
+  if (selectedShape) {
+    const newSize = parseInt(fontSizeSelect.value);
+    if (selectedShape instanceof TextShape) {
+      selectedShape.fontSize = newSize;
+      // Recalculate bounds
+      const tempCtx = document.createElement("canvas").getContext("2d");
+      tempCtx.font = `${selectedShape.fontSize}px ${selectedShape.fontFamily}`;
+      const metrics = tempCtx.measureText(selectedShape.text);
+      selectedShape.width = metrics.width;
+      selectedShape.height = selectedShape.fontSize;
+    } else {
+      // For regular shapes, just update the font size for drawing
+      selectedShape.fontSize = newSize;
+    }
+  }
+});
+
+fontFamilySelect.addEventListener("change", () => {
+  if (selectedShape) {
+    const newFont = fontFamilySelect.value;
+    if (selectedShape instanceof TextShape) {
+      selectedShape.fontFamily = newFont;
+      // Recalculate bounds
+      const tempCtx = document.createElement("canvas").getContext("2d");
+      tempCtx.font = `${selectedShape.fontSize}px ${selectedShape.fontFamily}`;
+      const metrics = tempCtx.measureText(selectedShape.text);
+      selectedShape.width = metrics.width;
+    } else {
+      // For regular shapes, just update the font family for drawing
+      selectedShape.fontFamily = newFont;
+    }
+  }
+}); 
