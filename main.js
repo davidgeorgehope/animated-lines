@@ -946,4 +946,171 @@ fontFamilySelect.addEventListener("change", () => {
       selectedShape.fontFamily = newFont;
     }
   }
-}); 
+});
+
+/********************************************************************
+ * ADDING SAVE/LOAD FUNCTIONALITY (with ID preservation)
+ ********************************************************************/
+
+// 1) Convert in-memory shape objects to a simpler "serializable" form
+function shapeToSerializable(shape) {
+  // Notice we add "id" to the exported data
+  if (shape instanceof ImageShape) {
+    return {
+      id: shape.id,
+      type: "ImageShape",
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      imgSrc: shape.img.src
+    };
+  } else if (shape instanceof TextShape) {
+    return {
+      id: shape.id,
+      type: "TextShape",
+      x: shape.x,
+      y: shape.y,
+      text: shape.text,
+      fontSize: shape.fontSize,
+      fontFamily: shape.fontFamily
+    };
+  } else {
+    // Default "Shape"
+    return {
+      id: shape.id,
+      type: "Shape",
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      text: shape.text,
+      fontSize: shape.fontSize || 14,
+      fontFamily: shape.fontFamily || "Arial"
+    };
+  }
+}
+
+// 2) Convert the simpler "serializable" form back into actual shape objects
+function shapeFromSerializable(sdata) {
+  let newShape;
+
+  if (sdata.type === "ImageShape") {
+    const img = new Image();
+    img.src = sdata.imgSrc;
+    newShape = new ImageShape(sdata.x, sdata.y, sdata.width, sdata.height, img);
+  } else if (sdata.type === "TextShape") {
+    newShape = new TextShape(
+      sdata.x,
+      sdata.y,
+      sdata.text,
+      sdata.fontSize,
+      sdata.fontFamily
+    );
+  } else {
+    newShape = new Shape(
+      sdata.x,
+      sdata.y,
+      sdata.width,
+      sdata.height,
+      sdata.text
+    );
+    // Restore any custom font info
+    newShape.fontSize = sdata.fontSize || 14;
+    newShape.fontFamily = sdata.fontFamily || "Arial";
+  }
+
+  // IMPORTANT: restore the original ID here
+  newShape.id = sdata.id;
+  return newShape;
+}
+
+// 3) Export the entire diagram as JSON and trigger a file download
+function saveDiagram() {
+  const exportData = {
+    shapeCounter: shapeCounter,
+    shapes: shapes.map(shapeToSerializable),
+    arrows: arrows
+  };
+
+  const dataStr =
+    "data:text/json;charset=utf-8," +
+    encodeURIComponent(JSON.stringify(exportData, null, 2));
+  const dlAnchorEl = document.createElement("a");
+  dlAnchorEl.setAttribute("href", dataStr);
+  dlAnchorEl.setAttribute("download", "diagram.json");
+  dlAnchorEl.click();
+}
+
+// 4) Ask the user for a JSON file from disk, then re-import shapes/arrows
+function loadDiagramFromFile() {
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "application/json";
+
+  fileInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const jsonText = evt.target.result;
+        importDiagram(jsonText);
+      } catch (error) {
+        console.error("Error reading JSON:", error);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Programmatically click the <input> to open the file picker dialog
+  fileInput.click();
+}
+
+// 5) Import the diagram data from a JSON string
+function importDiagram(jsonText) {
+  try {
+    const importData = JSON.parse(jsonText);
+
+    // Clear existing shapes/arrows
+    shapes = [];
+    arrows = [];
+
+    // Recreate shapes
+    const newShapes = importData.shapes.map(shapeFromSerializable);
+    shapes.push(...newShapes);
+
+    // Now compute the largest used shape ID so we can set shapeCounter
+    // higher than that (so new shapes get unique IDs).
+    const maxId = newShapes.reduce((acc, s) => Math.max(acc, s.id), 0);
+    shapeCounter = Math.max(importData.shapeCounter, maxId + 1);
+
+    // Restore arrows
+    arrows = importData.arrows || [];
+
+    // Optionally, reset the selected shape
+    selectedShape = null;
+
+    console.log("Diagram loaded successfully!");
+  } catch (error) {
+    console.error("Error parsing diagram JSON:", error);
+  }
+}
+
+// ----------------------------------------------------------------------
+// ADD TWO NEW BUTTONS (in your HTML) and attach event listeners here:
+// E.g. <button id="saveBtn">Save</button> and <button id="loadBtn">Load</button>
+// ----------------------------------------------------------------------
+
+// Grab references to the newly created buttons
+const saveBtn = document.getElementById("saveBtn");
+const loadBtn = document.getElementById("loadBtn");
+
+// Attach click listeners to run our save/load functions
+saveBtn.addEventListener("click", saveDiagram);
+loadBtn.addEventListener("click", loadDiagramFromFile);
+
+// ----------------------------------------------------------------------
+// All previous code in main.js (Shape classes, event handlers, etc.) remains below
+// ---------------------------------------------------------------------- 
