@@ -33,7 +33,8 @@
 
     #canvasContainer {
       position: relative;
-      width: 100%;
+      width: calc(100% - 150px);
+      margin-left: 150px;
       height: calc(100vh - 50px);
       overflow: hidden;
     }
@@ -78,6 +79,19 @@
     }
     #context-menu li:hover {
       background: #eeeeee;
+    }
+
+    #colorSelectionToolbar {
+      position: fixed;
+      top: 50px; /* Adjust top value if you have a top toolbar */
+      left: 0;
+      display: flex;
+      flex-direction: column; /* Stack items vertically */
+      align-items: flex-start; /* Align items to the start */
+      padding: 10px;
+      background-color: #f0f0f0;
+      border-right: 1px solid #ccc;
+      width: auto; /* Adjust width as needed */
     }
   </style>
 </head>
@@ -130,10 +144,6 @@
     <!-- Save/Load buttons -->
     <button id="saveBtn">Save</button>
     <button id="loadBtn">Load</button>
-
-    <!-- ADD: Arrow color picker -->
-    <label for="arrowColorPicker" style="margin-left: 20px;">Arrow Color:</label>
-    <input type="color" id="arrowColorPicker" value="#000000">
   </div>
 
   <div id="canvasContainer">
@@ -152,6 +162,11 @@
       <hr />
       <li id="ctx-delete">Delete</li>
     </ul>
+  </div>
+
+  <div id="colorSelectionToolbar">
+    <label for="arrowColorPicker">Arrow Color:</label>
+    <input type="color" id="arrowColorPicker" value="#000000">
   </div>
 
   <script src="gif.js"></script>
