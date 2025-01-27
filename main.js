@@ -99,11 +99,14 @@ class Shape {
     // Add default font properties
     this.fontSize = 14;
     this.fontFamily = 'Arial';
+    // --- ADD: Default line color ---
+    this.color = "#333"; // Default stroke color
   }
 
   draw(ctx) {
     ctx.fillStyle = "#e8f1fa";
-    ctx.strokeStyle = "#333";
+    // --- MOD: Use shape's color property ---
+    ctx.strokeStyle = this.color;
     ctx.lineWidth = 2;
     ctx.fillRect(this.x, this.y, this.width, this.height);
     ctx.strokeRect(this.x, this.y, this.width, this.height);
@@ -556,6 +559,7 @@ function drawArrow(ctx, fromX, fromY, toX, toY, color = "#000000") {
   ctx.save();
   ctx.setLineDash([6, 4]);
   ctx.lineDashOffset = -dashOffset;
+  // --- MOD: Use arrow's color property ---
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
 
@@ -976,7 +980,9 @@ function shapeToSerializable(shape) {
       y: shape.y,
       width: shape.width,
       height: shape.height,
-      imgSrc: shape.img.src
+      imgSrc: shape.img.src,
+      // --- ADD: Save color ---
+      color: shape.color
     };
   } else if (shape instanceof TextShape) {
     return {
@@ -986,7 +992,9 @@ function shapeToSerializable(shape) {
       y: shape.y,
       text: shape.text,
       fontSize: shape.fontSize,
-      fontFamily: shape.fontFamily
+      fontFamily: shape.fontFamily,
+      // --- ADD: Save color ---
+      color: shape.color
     };
   } else {
     // Default "Shape"
@@ -999,7 +1007,9 @@ function shapeToSerializable(shape) {
       height: shape.height,
       text: shape.text,
       fontSize: shape.fontSize || 14,
-      fontFamily: shape.fontFamily || "Arial"
+      fontFamily: shape.fontFamily || "Arial",
+      // --- ADD: Save color ---
+      color: shape.color
     };
   }
 }
@@ -1032,6 +1042,8 @@ function shapeFromSerializable(sdata) {
     newShape.fontSize = sdata.fontSize || 14;
     newShape.fontFamily = sdata.fontFamily || "Arial";
   }
+  // --- ADD: Restore color ---
+  newShape.color = sdata.color || "#333";
 
   // IMPORTANT: restore the original ID here
   newShape.id = sdata.id;
@@ -1172,8 +1184,11 @@ function pointLineDistance(px, py, x1, y1, x2, y2) {
 
 // --- ADD: Listen for changes to the arrow color picker ---
 arrowColorPicker.addEventListener("input", (e) => {
+  // --- MOD: Check if a shape or arrow is selected ---
   if (selectedArrow) {
     selectedArrow.color = e.target.value;
+  } else if (selectedShape) {
+    selectedShape.color = e.target.value;
   }
 });
 
