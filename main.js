@@ -51,6 +51,9 @@ let selectedShape = null;        // which shape (if any) is selected
 let isResizing = false;          // are we currently resizing a shape?
 let resizeHandleIndex = -1;      // which handle is being dragged?
 const HANDLE_SIZE = 8;           // size of each resize handle
+// --- ADD: Arrow selection variables ---
+let selectedArrow = null;        // which arrow (if any) is selected
+const ARROW_HANDLE_SIZE = 6;     // slightly smaller than shape handles
 
 // Reference the context menu div
 const contextMenu = document.getElementById("context-menu");
@@ -530,6 +533,11 @@ function animate() {
   // --- ADD: If there's a selected shape, draw its resize handles ---
   if (selectedShape) {
     drawResizeHandles(ctx, selectedShape);
+  }
+
+  // --- ADD: Draw arrow selection handles if an arrow is selected ---
+  if (selectedArrow) {
+    drawArrowSelectionHandles(ctx, selectedArrow);
   }
 
   // Update dash offset
@@ -1191,6 +1199,33 @@ arrowColorPicker.addEventListener("input", (e) => {
     selectedShape.color = e.target.value;
   }
 });
+
+// --- ADD: Function to draw selection handles for an arrow ---
+function drawArrowSelectionHandles(ctx, arrow) {
+  if (!arrow) return;
+
+  const fromShape = shapes.find((s) => s.id === arrow.fromId);
+  const toShape = shapes.find((s) => s.id === arrow.toId);
+  if (!fromShape || !toShape) return;
+
+  const fromPt = getEdgeIntersection(
+    fromShape,
+    toShape.x + toShape.width / 2,
+    toShape.y + toShape.height / 2
+  );
+  const toPt = getEdgeIntersection(
+    toShape,
+    fromShape.x + fromShape.width / 2,
+    fromShape.y + fromShape.height / 2
+  );
+
+  ctx.save();
+  ctx.fillStyle = "blue"; // Different color to distinguish from shape handles
+  // Draw handles at both ends of the arrow
+  ctx.fillRect(fromPt.x - ARROW_HANDLE_SIZE/2, fromPt.y - ARROW_HANDLE_SIZE/2, ARROW_HANDLE_SIZE, ARROW_HANDLE_SIZE);
+  ctx.fillRect(toPt.x   - ARROW_HANDLE_SIZE/2, toPt.y   - ARROW_HANDLE_SIZE/2, ARROW_HANDLE_SIZE, ARROW_HANDLE_SIZE);
+  ctx.restore();
+}
 
 // ----------------------------------------------------------------------
 // All previous code in main.js (Shape classes, event handlers, etc.) remains below
