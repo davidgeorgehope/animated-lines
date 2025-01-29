@@ -130,6 +130,8 @@ class Shape {
     this.fontFamily = 'Arial';
     // --- ADD: Default line color ---
     this.color = "#333"; // Default stroke color
+    // NEW: add a default textColor
+    this.textColor = "#000";
   }
 
   draw(ctx) {
@@ -141,7 +143,7 @@ class Shape {
     ctx.strokeRect(this.x, this.y, this.width, this.height);
 
     // Draw text with custom font settings
-    ctx.fillStyle = "#000";
+    ctx.fillStyle = this.textColor;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     const metrics = ctx.measureText(this.text);
     const textX = this.x + (this.width - metrics.width) / 2;
@@ -201,6 +203,8 @@ class TextShape {
     this.text = text;
     this.fontSize = fontSize;
     this.fontFamily = fontFamily;
+    // NEW: add a default textColor
+    this.textColor = "#000";
 
     // Measure text width for bounding box
     const tempCtx = document.createElement("canvas").getContext("2d");
@@ -211,7 +215,7 @@ class TextShape {
   }
 
   draw(ctx) {
-    ctx.fillStyle = "#000";
+    ctx.fillStyle = this.textColor;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     // Adjust the y-coordinate to account for the baseline
     ctx.fillText(this.text, this.x, this.y + this.height);
@@ -1029,7 +1033,9 @@ function shapeToSerializable(shape) {
       height: shape.height,
       imgSrc: shape.img.src,
       // --- ADD: Save color ---
-      color: shape.color
+      color: shape.color,
+      // NEW: include textColor (even though images might not use it)
+      textColor: shape.textColor
     };
   } else if (shape instanceof TextShape) {
     return {
@@ -1041,7 +1047,9 @@ function shapeToSerializable(shape) {
       fontSize: shape.fontSize,
       fontFamily: shape.fontFamily,
       // --- ADD: Save color ---
-      color: shape.color
+      color: shape.color,
+      // NEW
+      textColor: shape.textColor
     };
   } else {
     // Default "Shape"
@@ -1056,7 +1064,9 @@ function shapeToSerializable(shape) {
       fontSize: shape.fontSize || 14,
       fontFamily: shape.fontFamily || "Arial",
       // --- ADD: Save color ---
-      color: shape.color
+      color: shape.color,
+      // NEW
+      textColor: shape.textColor
     };
   }
 }
@@ -1091,6 +1101,8 @@ function shapeFromSerializable(sdata) {
   }
   // --- ADD: Restore color ---
   newShape.color = sdata.color || "#333";
+  // NEW:
+  newShape.textColor = sdata.textColor || "#000";
 
   // IMPORTANT: restore the original ID here
   newShape.id = sdata.id;
@@ -1269,3 +1281,20 @@ function drawArrowSelectionHandles(ctx, arrow) {
 // ----------------------------------------------------------------------
 // All previous code in main.js (Shape classes, event handlers, etc.) remains below
 // ---------------------------------------------------------------------- 
+
+function init() {
+  // Grab the new text color picker
+  const textColorPicker = document.getElementById("textColorPicker");
+
+  // Listen for user input changes on text color
+  textColorPicker.addEventListener("input", (e) => {
+    if (selectedShape) {
+      // If a shape is selected (regular shape or TextShape)
+      selectedShape.textColor = e.target.value;
+    }
+  });
+}
+
+// Finally, add a small init call somewhere after your variable declarations or 
+// inside a DOMContentLoaded event. For instance:
+document.addEventListener("DOMContentLoaded", init); 
