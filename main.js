@@ -119,6 +119,10 @@ const fillColorPicker = document.getElementById("fillColorPicker");
 // --- ADD: Line thickness picker ---
 const lineThicknessPicker = document.getElementById("lineThicknessPicker");
 
+// --- ADD: Variables for animated border ---
+let isAnimatedBorderEnabled = false;
+let animatedBorderShape = null;
+
 // Shape class
 class Shape {
   constructor(x, y, w, h, text) {
@@ -154,6 +158,22 @@ class Shape {
     const textX = this.x + (this.width - metrics.width) / 2;
     const textY = this.y + this.height / 2 + (this.fontSize / 3);
     ctx.fillText(this.text, textX, textY);
+
+    // --- ADD: Animated border drawing ---
+    if (isAnimatedBorderEnabled && animatedBorderShape === this) {
+      this.drawAnimatedBorder(ctx);
+    }
+  }
+
+  // --- ADD: Method to draw animated border ---
+  drawAnimatedBorder(ctx) {
+    ctx.save();
+    ctx.strokeStyle = 'blue'; // Border color
+    ctx.lineWidth = 3;       // Border thickness
+    ctx.setLineDash([10, 5]); // Dash pattern
+    ctx.lineDashOffset = -dashOffset; // Animate dash offset
+    ctx.strokeRect(this.x - 3, this.y - 3, this.width + 6, this.height + 6); // Slightly larger rect
+    ctx.restore();
   }
 
   containsPoint(px, py) {
@@ -578,7 +598,7 @@ function animate() {
     }
 
     // --- ADD: If there's a selected shape, draw its resize handles ---
-    if (selectedShape) {
+    if (selectedShape && !isAnimatedBorderEnabled) { // Don't draw handles if animated border is on
       drawResizeHandles(ctx, selectedShape);
     }
 
@@ -1332,5 +1352,16 @@ lineThicknessPicker.addEventListener("input", (e) => {
     selectedArrow.lineWidth = parseInt(e.target.value);
   } else if (selectedShape) {
     selectedShape.lineWidth = parseInt(e.target.value);
+  }
+}); 
+
+// --- ADD: Event listener for the animated border checkbox ---
+const animatedBorderCheckbox = document.getElementById("animatedBorderCheckbox");
+animatedBorderCheckbox.addEventListener("change", (e) => {
+  isAnimatedBorderEnabled = e.target.checked;
+  if (isAnimatedBorderEnabled && selectedShape) {
+    animatedBorderShape = selectedShape; // Apply to selected shape
+  } else {
+    animatedBorderShape = null;          // Disable animated border
   }
 }); 
