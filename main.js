@@ -116,6 +116,8 @@ const fontSizeSelect = document.getElementById("fontSizeSelect");
 const fontFamilySelect = document.getElementById("fontFamilySelect");
 const arrowColorPicker = document.getElementById("arrowColorPicker");
 const fillColorPicker = document.getElementById("fillColorPicker");
+// --- ADD: Line thickness picker ---
+const lineThicknessPicker = document.getElementById("lineThicknessPicker");
 
 // Shape class
 class Shape {
@@ -130,16 +132,19 @@ class Shape {
     this.fontSize = 14;
     this.fontFamily = 'Arial';
     // line/fill/text colors
-    this.color = "#333"; 
+    this.color = "#333";
     this.fillColor = "#e8f1fa"; // ← NEW: default fill color
     this.textColor = "#000";
+    // --- ADD: line thickness ---
+    this.lineWidth = 2;
   }
 
   draw(ctx) {
     // Use shape's fillColor instead of a fixed value
     ctx.fillStyle = this.fillColor;
     ctx.strokeStyle = this.color;
-    ctx.lineWidth = 2;
+    // --- MOD: Use shape's lineWidth ---
+    ctx.lineWidth = this.lineWidth;
     ctx.fillRect(this.x, this.y, this.width, this.height);
     ctx.strokeRect(this.x, this.y, this.width, this.height);
 
@@ -546,7 +551,6 @@ function animate() {
       const fromShape = shapes.find((s) => s.id === arrow.fromId);
       const toShape = shapes.find((s) => s.id === arrow.toId);
       if (fromShape && toShape) {
-        // Find intersection points on each shape's edge
         const fromPt = getEdgeIntersection(
           fromShape,
           toShape.x + toShape.width / 2,
@@ -557,7 +561,7 @@ function animate() {
           fromShape.x + fromShape.width / 2,
           fromShape.y + fromShape.height / 2
         );
-        drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow.color);
+        drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow);
       }
     });
 
@@ -606,20 +610,22 @@ function animate() {
 }
 
 // Draw a dotted arrow for a final connection
-function drawArrow(ctx, fromX, fromY, toX, toY, color = "#000000") {
+function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
   ctx.save();
   ctx.setLineDash([6, 4]);
   ctx.lineDashOffset = -dashOffset;
-  // --- MOD: Use arrow's color property ---
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
+
+  // Use arrowObj's color & lineWidth
+  ctx.strokeStyle = arrowObj.color || "#000";
+  // --- MOD: Use arrowObj's lineWidth ---
+  ctx.lineWidth = arrowObj.lineWidth || 2;
 
   ctx.beginPath();
   ctx.moveTo(fromX, fromY);
   ctx.lineTo(toX, toY);
   ctx.stroke();
 
-  drawArrowhead(ctx, fromX, fromY, toX, toY, color);
+  drawArrowhead(ctx, fromX, fromY, toX, toY, arrowObj.color);
   ctx.restore();
 }
 
@@ -1317,4 +1323,14 @@ document.addEventListener("DOMContentLoaded", () => {
     canvasColorPicker.addEventListener("input", (e) => {
         canvasBgColor = e.target.value; // update the global variable
     });
+}); 
+
+// --- ADD: Listen for changes to the line thickness picker ---
+lineThicknessPicker.addEventListener("input", (e) => {
+  // --- MOD: Check if a shape or arrow is selected ---
+  if (selectedArrow) {
+    selectedArrow.lineWidth = parseInt(e.target.value);
+  } else if (selectedShape) {
+    selectedShape.lineWidth = parseInt(e.target.value);
+  }
 }); 
