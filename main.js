@@ -115,6 +115,7 @@ canvas.addEventListener("contextmenu", (e) => {
 const fontSizeSelect = document.getElementById("fontSizeSelect");
 const fontFamilySelect = document.getElementById("fontFamilySelect");
 const arrowColorPicker = document.getElementById("arrowColorPicker");
+const fillColorPicker = document.getElementById("fillColorPicker");
 
 // Shape class
 class Shape {
@@ -128,26 +129,25 @@ class Shape {
     // Add default font properties
     this.fontSize = 14;
     this.fontFamily = 'Arial';
-    // --- ADD: Default line color ---
-    this.color = "#333"; // Default stroke color
-    // NEW: add a default textColor
+    // line/fill/text colors
+    this.color = "#333"; 
+    this.fillColor = "#e8f1fa"; // ← NEW: default fill color
     this.textColor = "#000";
   }
 
   draw(ctx) {
-    ctx.fillStyle = "#e8f1fa";
-    // --- MOD: Use shape's color property ---
+    // Use shape's fillColor instead of a fixed value
+    ctx.fillStyle = this.fillColor;
     ctx.strokeStyle = this.color;
     ctx.lineWidth = 2;
     ctx.fillRect(this.x, this.y, this.width, this.height);
     ctx.strokeRect(this.x, this.y, this.width, this.height);
 
-    // Draw text with custom font settings
     ctx.fillStyle = this.textColor;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     const metrics = ctx.measureText(this.text);
     const textX = this.x + (this.width - metrics.width) / 2;
-    const textY = this.y + this.height / 2 + (this.fontSize / 3); // Adjusted for better vertical centering
+    const textY = this.y + this.height / 2 + (this.fontSize / 3);
     ctx.fillText(this.text, textX, textY);
   }
 
@@ -1032,10 +1032,9 @@ function shapeToSerializable(shape) {
       width: shape.width,
       height: shape.height,
       imgSrc: shape.img.src,
-      // --- ADD: Save color ---
       color: shape.color,
-      // NEW: include textColor (even though images might not use it)
-      textColor: shape.textColor
+      textColor: shape.textColor,
+      fillColor: shape.fillColor
     };
   } else if (shape instanceof TextShape) {
     return {
@@ -1046,10 +1045,9 @@ function shapeToSerializable(shape) {
       text: shape.text,
       fontSize: shape.fontSize,
       fontFamily: shape.fontFamily,
-      // --- ADD: Save color ---
       color: shape.color,
-      // NEW
-      textColor: shape.textColor
+      textColor: shape.textColor,
+      fillColor: shape.fillColor
     };
   } else {
     // Default "Shape"
@@ -1063,10 +1061,9 @@ function shapeToSerializable(shape) {
       text: shape.text,
       fontSize: shape.fontSize || 14,
       fontFamily: shape.fontFamily || "Arial",
-      // --- ADD: Save color ---
       color: shape.color,
-      // NEW
-      textColor: shape.textColor
+      textColor: shape.textColor,
+      fillColor: shape.fillColor
     };
   }
 }
@@ -1103,6 +1100,7 @@ function shapeFromSerializable(sdata) {
   newShape.color = sdata.color || "#333";
   // NEW:
   newShape.textColor = sdata.textColor || "#000";
+  newShape.fillColor = sdata.fillColor || "#e8f1fa";
 
   // IMPORTANT: restore the original ID here
   newShape.id = sdata.id;
@@ -1298,3 +1296,10 @@ function init() {
 // Finally, add a small init call somewhere after your variable declarations or 
 // inside a DOMContentLoaded event. For instance:
 document.addEventListener("DOMContentLoaded", init); 
+
+// Add event listeners for the fill color picker
+fillColorPicker.addEventListener("input", (e) => {
+  if (selectedShape) {
+    selectedShape.fillColor = e.target.value;
+  }
+}); 
