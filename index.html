@@ -9,164 +9,175 @@
       padding: 0;
       user-select: none;
       font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    #toolbarContainer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      background-color: #f0f0f0;
+      border-bottom: 1px solid #ccc;
+      z-index: 100;
+      padding: 10px;
+      box-sizing: border-box;
     }
 
     #toolbar {
-      display: flex;
-      align-items: center;
-      padding: 8px;
-      background: #f0f0f0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      padding: 10px;
+      background-color: #f0f0f0;
       border-bottom: 1px solid #ccc;
+      z-index: 100;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    #toolbar button, #toolbar select, #toolbar input[type="color"] {
+      margin-right: 5px;
     }
 
     #toolbar button {
-      margin-right: 8px;
       padding: 6px 12px;
       cursor: pointer;
     }
 
     /* NEW: small style for our selects so they line up with the buttons */
     #toolbar select {
-      margin-right: 8px;
       padding: 4px 8px;
     }
 
     #canvasContainer {
       position: relative;
-      width: calc(100% - 150px);
-      margin-left: 150px;
+      width: 100%;
       height: calc(100vh - 50px);
-      overflow: hidden;
+      margin-top: 50px;
     }
 
     #myCanvas {
+      display: block;
       background-color: #fff;
       border: 1px solid #ccc;
-      display: block;
-      margin: 0 auto;
-      position: absolute;
-      top: 0;
-      left: 0;
     }
 
     /* Inline text editor (for double-click on a shape) */
     #shapeEditor {
-      position: absolute;
+      position: fixed;
       display: none;
-      padding: 4px;
-      font-size: 14px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.3);
       border: 1px solid #ccc;
+      padding: 2px;
     }
 
     /* Basic styling for the context menu */
     #context-menu {
-      position: absolute;
+      position: fixed;
       display: none;
-      background: #fff;
+      background-color: white;
       border: 1px solid #ccc;
-      box-shadow: 1px 1px 5px rgba(0, 0, 0, 0.2);
-      z-index: 9999;
+      padding: 5px;
+      z-index: 110;
     }
-    #context-menu ul {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
-    #context-menu li {
-      padding: 8px 12px;
+    #context-menu button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 5px;
+      border: none;
+      background: none;
       cursor: pointer;
     }
-    #context-menu li:hover {
-      background: #eeeeee;
+    #context-menu button:hover {
+      background-color: #f0f0f0;
     }
 
     #colorSelectionToolbar {
       position: fixed;
-      top: 50px; /* Adjust top value if you have a top toolbar */
-      left: 0;
-      display: flex;
-      flex-direction: column; /* Stack items vertically */
-      align-items: flex-start; /* Align items to the start */
-      padding: 10px;
+      top: 50px;
+      right: 10px;
       background-color: #f0f0f0;
-      border-right: 1px solid #ccc;
-      width: auto; /* Adjust width as needed */
+      padding: 10px;
+      border: 1px solid #ccc;
+      z-index: 99;
     }
   </style>
 </head>
 <body>
-  <div id="toolbar">
-    <button id="toolSelect">Select/Move</button>
-    <button id="toolRect">Create Rectangle</button>
-    <button id="toolArrow">Draw Arrow</button>
-    <button id="startGifBtn">Start Recording</button>
-    <button id="stopGifBtn">Stop Recording</button>
-    <button id="toolText">Text</button>
+  <div id="toolbarContainer">
+    <div id="toolbar">
+      <button id="toolSelect">Select/Move</button>
+      <button id="toolRect">Create Rectangle</button>
+      <button id="toolArrow">Draw Arrow</button>
+      <button id="startGifBtn">Start Recording</button>
+      <button id="stopGifBtn">Stop Recording</button>
+      <button id="toolText">Text</button>
 
-    <!-- Updated: Expanded font size dropdown -->
-    <select id="fontSizeSelect">
-      <option value="8">8px</option>
-      <option value="10">10px</option>
-      <option value="12">12px</option>
-      <option value="14" selected>14px</option>
-      <option value="16">16px</option>
-      <option value="18">18px</option>
-      <option value="20">20px</option>
-      <option value="24">24px</option>
-      <option value="28">28px</option>
-      <option value="32">32px</option>
-      <option value="36">36px</option>
-      <option value="48">48px</option>
-      <option value="64">64px</option>
-    </select>
+      <!-- Updated: Expanded font size dropdown -->
+      <select id="fontSizeSelect">
+        <option value="8">8px</option>
+        <option value="10">10px</option>
+        <option value="12">12px</option>
+        <option value="14" selected>14px</option>
+        <option value="16">16px</option>
+        <option value="18">18px</option>
+        <option value="20">20px</option>
+        <option value="24">24px</option>
+        <option value="28">28px</option>
+        <option value="32">32px</option>
+        <option value="36">36px</option>
+        <option value="48">48px</option>
+        <option value="64">64px</option>
+      </select>
 
-    <!-- Updated: Expanded font family dropdown -->
-    <select id="fontFamilySelect">
-      <option value="Arial" selected>Arial</option>
-      <option value="Helvetica">Helvetica</option>
-      <option value="Times New Roman">Times New Roman</option>
-      <option value="Courier New">Courier New</option>
-      <option value="Verdana">Verdana</option>
-      <option value="Georgia">Georgia</option>
-      <option value="Palatino">Palatino</option>
-      <option value="Garamond">Garamond</option>
-      <option value="Bookman">Bookman</option>
-      <option value="Comic Sans MS">Comic Sans MS</option>
-      <option value="Impact">Impact</option>
-      <option value="Lucida Console">Lucida Console</option>
-      <option value="Tahoma">Tahoma</option>
-      <option value="Trebuchet MS">Trebuchet MS</option>
-      <option value="Courier">Courier</option>
-      <option value="Brush Script MT">Brush Script MT</option>
-    </select>
+      <!-- Updated: Expanded font family dropdown -->
+      <select id="fontFamilySelect">
+        <option value="Arial" selected>Arial</option>
+        <option value="Helvetica">Helvetica</option>
+        <option value="Times New Roman">Times New Roman</option>
+        <option value="Courier New">Courier New</option>
+        <option value="Verdana">Verdana</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Palatino">Palatino</option>
+        <option value="Garamond">Garamond</option>
+        <option value="Bookman">Bookman</option>
+        <option value="Comic Sans MS">Comic Sans MS</option>
+        <option value="Impact">Impact</option>
+        <option value="Lucida Console">Lucida Console</option>
+        <option value="Tahoma">Tahoma</option>
+        <option value="Trebuchet MS">Trebuchet MS</option>
+        <option value="Courier">Courier</option>
+        <option value="Brush Script MT">Brush Script MT</option>
+      </select>
 
-    <!-- Save/Load buttons -->
-    <button id="saveBtn">Save</button>
-    <button id="loadBtn">Load</button>
+      <!-- Save/Load buttons -->
+      <button id="saveBtn">Save</button>
+      <button id="loadBtn">Load</button>
+    </div>
+    <div id="colorSelectionToolbar">
+      <label for="arrowColorPicker">Color:</label>
+      <input type="color" id="arrowColorPicker" value="#000000">
+    </div>
   </div>
 
   <div id="canvasContainer">
-    <canvas id="myCanvas" width="1200" height="700"></canvas>
+    <canvas id="myCanvas" width="1200" height="1200"></canvas>
     <!-- Inline text editing box -->
     <input type="text" id="shapeEditor" />
   </div>
 
   <!-- Context menu container -->
   <div id="context-menu">
-    <ul>
-      <li id="ctx-bring-forward">Bring Forward</li>
-      <li id="ctx-send-backward">Send Backward</li>
-      <li id="ctx-bring-front">Bring to Front</li>
-      <li id="ctx-send-back">Send to Back</li>
-      <hr />
-      <li id="ctx-delete">Delete</li>
-    </ul>
-  </div>
-
-  <div id="colorSelectionToolbar">
-    <label for="arrowColorPicker">Arrow Color:</label>
-    <input type="color" id="arrowColorPicker" value="#000000">
+    <button id="ctx-bring-forward">Bring Forward</button>
+    <button id="ctx-send-backward">Send Backward</button>
+    <button id="ctx-bring-front">Bring to Front</button>
+    <button id="ctx-send-back">Send to Back</button>
+    <hr />
+    <button id="ctx-delete">Delete</button>
   </div>
 
   <script src="gif.js"></script>

@@ -9,7 +9,33 @@ const ctx = canvas.getContext("2d");
 
 // Set to 1200×627 for LinkedIn
 canvas.width = 1200;
-canvas.height = 627;
+canvas.height = 1200;
+
+// --- ADD: Function to adjust canvas zoom to fit screen ---
+function adjustCanvasZoom() {
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+
+    let scale = 1; // Default no scale
+
+    // Calculate scale to fit width
+    const scaleX = windowWidth / canvasWidth;
+    // Calculate scale to fit height
+    const scaleY = windowHeight / canvasHeight;
+
+    // Use the smaller scale factor to fit both width and height
+    scale = Math.min(scaleX, scaleY);
+
+    // Apply the scale using CSS transform
+    canvas.style.transformOrigin = '0 0'; // Scale from top-left corner
+    canvas.style.transform = `scale(${scale})`;
+}
+
+// Call adjustCanvasZoom initially and on window resize
+adjustCanvasZoom();
+window.addEventListener('resize', adjustCanvasZoom);
 
 // Toolbar buttons
 const selectBtn = document.getElementById("toolSelect");
@@ -76,8 +102,8 @@ canvas.addEventListener("contextmenu", (e) => {
   // If we did, select it and show our context menu at the mouse location
   if (shape) {
     selectedShape = shape;
-    contextMenu.style.left = e.pageX + "px";
-    contextMenu.style.top = e.pageY + "px";
+    contextMenu.style.left = x + "px";
+    contextMenu.style.top = y + "px";
     contextMenu.style.display = "block";
   } else {
     // Otherwise, hide it
@@ -423,9 +449,18 @@ function findShapeUnderMouse(x, y) {
 // Convert mouse event to canvas coordinates
 function getCanvasMousePos(e) {
   const rect = canvas.getBoundingClientRect();
+  // --- Get current scale from canvas transform ---
+  const transformValue = canvas.style.transform;
+  let scale = 1; // Default scale if no transform
+  if (transformValue) {
+      const scaleMatch = transformValue.match(/scale\((.*?)\)/);
+      if (scaleMatch && scaleMatch[1]) {
+          scale = parseFloat(scaleMatch[1]);
+      }
+  }
   return {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top,
+    x: (e.clientX - rect.left) / scale,  // --- Apply inverse scale ---
+    y: (e.clientY - rect.top) / scale,   // --- Apply inverse scale ---
   };
 }
 
@@ -810,6 +845,10 @@ function removeShapeById(id) {
 document.addEventListener("keydown", (e) => {
   // Some browsers interpret "Backspace" differently; here we also handle "Delete" explicitly
   if ((e.key === "Delete" || e.key === "Backspace") && selectedShape) {
+    // Check if the text input is focused, if so, do not delete shape
+    if (document.activeElement === shapeEditorInput) {
+      return;
+    }
     removeShapeById(selectedShape.id);
     selectedShape = null; // Clear selection
   }
