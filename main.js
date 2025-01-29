@@ -521,84 +521,88 @@ function getEdgeIntersection(shape, targetX, targetY) {
   return { x: best.x, y: best.y };
 }
 
-// Draw everything in an animation loop (for the dotted-line "marching" effect)
+/////////////////////////////////////
+// 1. Declare a global canvasBgColor
+/////////////////////////////////////
+let canvasBgColor = "#ffffff";
+
+// The animate() function:
 function animate() {
-  // Fill the entire canvas with white
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  // Now clearRect() isn't strictly necessary, but if you want
-  // to preserve partial transparency, you could skip fillRect.
-  // For a solid background, remove clearRect or comment it out.
-  // ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = canvasBgColor; // Use our background color variable
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Draw shapes
-  shapes.forEach((shape) => {
-    shape.draw(ctx);
-  });
+    // Now clearRect() isn't strictly necessary, but if you want
+    // to preserve partial transparency, you could skip fillRect.
+    // For a solid background, remove clearRect or comment it out.
+    // ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Draw existing arrows
-  arrows.forEach((arrow) => {
-    const fromShape = shapes.find((s) => s.id === arrow.fromId);
-    const toShape = shapes.find((s) => s.id === arrow.toId);
-    if (fromShape && toShape) {
-      // Find intersection points on each shape's edge
+    // Draw shapes
+    shapes.forEach((shape) => {
+      shape.draw(ctx);
+    });
+
+    // Draw existing arrows
+    arrows.forEach((arrow) => {
+      const fromShape = shapes.find((s) => s.id === arrow.fromId);
+      const toShape = shapes.find((s) => s.id === arrow.toId);
+      if (fromShape && toShape) {
+        // Find intersection points on each shape's edge
+        const fromPt = getEdgeIntersection(
+          fromShape,
+          toShape.x + toShape.width / 2,
+          toShape.y + toShape.height / 2
+        );
+        const toPt = getEdgeIntersection(
+          toShape,
+          fromShape.x + fromShape.width / 2,
+          fromShape.y + fromShape.height / 2
+        );
+        drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow.color);
+      }
+    });
+
+    // If currently drawing an arrow, draw the "rubber band" line
+    if (isDrawingLine && arrowStartShape) {
+      // from arrowStartShape edge to current mouse position
       const fromPt = getEdgeIntersection(
-        fromShape,
-        toShape.x + toShape.width / 2,
-        toShape.y + toShape.height / 2
+        arrowStartShape,
+        arrowEndPos.x,
+        arrowEndPos.y
       );
-      const toPt = getEdgeIntersection(
-        toShape,
-        fromShape.x + fromShape.width / 2,
-        fromShape.y + fromShape.height / 2
-      );
-      drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow.color);
+      // draw a temporary line to the mouse
+      drawTempLine(ctx, fromPt.x, fromPt.y, arrowEndPos.x, arrowEndPos.y);
     }
-  });
 
-  // If currently drawing an arrow, draw the "rubber band" line
-  if (isDrawingLine && arrowStartShape) {
-    // from arrowStartShape edge to current mouse position
-    const fromPt = getEdgeIntersection(
-      arrowStartShape,
-      arrowEndPos.x,
-      arrowEndPos.y
-    );
-    // draw a temporary line to the mouse
-    drawTempLine(ctx, fromPt.x, fromPt.y, arrowEndPos.x, arrowEndPos.y);
-  }
-
-  // --- ADD: If there's a selected shape, draw its resize handles ---
-  if (selectedShape) {
-    drawResizeHandles(ctx, selectedShape);
-  }
-
-  // --- ADD: Draw arrow selection handles if an arrow is selected ---
-  if (selectedArrow) {
-    drawArrowSelectionHandles(ctx, selectedArrow);
-  }
-
-  // Update dash offset
-  dashOffset += 2;
-  if (dashOffset > 10000) {
-    dashOffset = 0;
-  }
-
-  // If recording, add this frame to the GIF
-  if (isRecordingGIF && gif) {
-    try {
-      console.log("Adding frame to GIF");
-      gif.addFrame(canvas, {
-        copy: true,
-        delay: 100
-      });
-    } catch (error) {
-      console.error("Error adding frame:", error);
+    // --- ADD: If there's a selected shape, draw its resize handles ---
+    if (selectedShape) {
+      drawResizeHandles(ctx, selectedShape);
     }
-  }
 
-  requestAnimationFrame(animate);
+    // --- ADD: Draw arrow selection handles if an arrow is selected ---
+    if (selectedArrow) {
+      drawArrowSelectionHandles(ctx, selectedArrow);
+    }
+
+    // Update dash offset
+    dashOffset += 2;
+    if (dashOffset > 10000) {
+      dashOffset = 0;
+    }
+
+    // If recording, add this frame to the GIF
+    if (isRecordingGIF && gif) {
+      try {
+        console.log("Adding frame to GIF");
+        gif.addFrame(canvas, {
+          copy: true,
+          delay: 100
+        });
+      } catch (error) {
+        console.error("Error adding frame:", error);
+      }
+    }
+
+    requestAnimationFrame(animate);
 }
 
 // Draw a dotted arrow for a final connection
@@ -1302,4 +1306,15 @@ fillColorPicker.addEventListener("input", (e) => {
   if (selectedShape) {
     selectedShape.fillColor = e.target.value;
   }
+}); 
+
+/////////////////////////////////////////////
+// 2. Listen for changes in the new color picker
+/////////////////////////////////////////////
+document.addEventListener("DOMContentLoaded", () => {
+    // Existing init code, then:
+    const canvasColorPicker = document.getElementById("canvasColorPicker");
+    canvasColorPicker.addEventListener("input", (e) => {
+        canvasBgColor = e.target.value; // update the global variable
+    });
 }); 
