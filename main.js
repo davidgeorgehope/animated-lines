@@ -132,26 +132,38 @@ class Shape {
     this.width = w;
     this.height = h;
     this.text = text;
-    // Add default font properties
     this.fontSize = 14;
     this.fontFamily = 'Arial';
-    // line/fill/text colors
     this.color = "#333";
-    this.fillColor = "#e8f1fa"; // ← NEW: default fill color
+    this.fillColor = "#e8f1fa";
     this.textColor = "#000";
-    // --- ADD: line thickness ---
     this.lineWidth = 2;
+    this.isAnimated = false;
   }
 
   draw(ctx) {
-    // Use shape's fillColor instead of a fixed value
+    ctx.save();
+
+    // For the fill
     ctx.fillStyle = this.fillColor;
-    ctx.strokeStyle = this.color;
-    // --- MOD: Use shape's lineWidth ---
-    ctx.lineWidth = this.lineWidth;
     ctx.fillRect(this.x, this.y, this.width, this.height);
+
+    // If this shape is the one selected for an animated border, set the line dash:
+    if (this.isAnimated) {
+      ctx.setLineDash([10, 5]);
+      ctx.lineDashOffset = -dashOffset;
+    } else {
+      // Otherwise, no dash
+      ctx.setLineDash([]);
+      ctx.lineDashOffset = 0;
+    }
+
+    // Now stroke the shape normally, but possibly dotted
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = this.lineWidth;
     ctx.strokeRect(this.x, this.y, this.width, this.height);
 
+    // Draw text
     ctx.fillStyle = this.textColor;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     const metrics = ctx.measureText(this.text);
@@ -159,20 +171,6 @@ class Shape {
     const textY = this.y + this.height / 2 + (this.fontSize / 3);
     ctx.fillText(this.text, textX, textY);
 
-    // --- ADD: Animated border drawing ---
-    if (isAnimatedBorderEnabled && animatedBorderShape === this) {
-      this.drawAnimatedBorder(ctx);
-    }
-  }
-
-  // --- ADD: Method to draw animated border ---
-  drawAnimatedBorder(ctx) {
-    ctx.save();
-    ctx.strokeStyle = 'blue'; // Border color
-    ctx.lineWidth = 3;       // Border thickness
-    ctx.setLineDash([10, 5]); // Dash pattern
-    ctx.lineDashOffset = -dashOffset; // Animate dash offset
-    ctx.strokeRect(this.x - 3, this.y - 3, this.width + 6, this.height + 6); // Slightly larger rect
     ctx.restore();
   }
 
@@ -185,7 +183,6 @@ class Shape {
     );
   }
 
-  // Returns the center of this rectangle
   getCenter() {
     return {
       x: this.x + this.width / 2,
@@ -598,7 +595,7 @@ function animate() {
     }
 
     // --- ADD: If there's a selected shape, draw its resize handles ---
-    if (selectedShape && !isAnimatedBorderEnabled) { // Don't draw handles if animated border is on
+    if (selectedShape) {
       drawResizeHandles(ctx, selectedShape);
     }
 
@@ -1358,10 +1355,7 @@ lineThicknessPicker.addEventListener("input", (e) => {
 // --- ADD: Event listener for the animated border checkbox ---
 const animatedBorderCheckbox = document.getElementById("animatedBorderCheckbox");
 animatedBorderCheckbox.addEventListener("change", (e) => {
-  isAnimatedBorderEnabled = e.target.checked;
-  if (isAnimatedBorderEnabled && selectedShape) {
-    animatedBorderShape = selectedShape; // Apply to selected shape
-  } else {
-    animatedBorderShape = null;          // Disable animated border
+  if (selectedShape) {
+    selectedShape.isAnimated = e.target.checked;
   }
 }); 
