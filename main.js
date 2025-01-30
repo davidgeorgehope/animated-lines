@@ -41,8 +41,8 @@ window.addEventListener('resize', adjustCanvasZoom);
 const selectBtn = document.getElementById("toolSelect");
 const rectBtn = document.getElementById("toolRect");
 const arrowBtn = document.getElementById("toolArrow");
-const startGifBtn = document.getElementById("startGifBtn");
-const stopGifBtn = document.getElementById("stopGifBtn");
+// --- ADD exportGifBtn ---
+const exportGifBtn = document.getElementById("exportGifBtn");
 
 // Inline text editor input
 const shapeEditorInput = document.getElementById("shapeEditor");
@@ -67,10 +67,6 @@ let dragOffsetY = 0;
 let isDrawingLine = false;
 let arrowStartShape = null; 
 let arrowEndPos = { x: 0, y: 0 };
-
-// ============== GIF RECORDING VARS ===============
-let isRecordingGIF = false;
-let gif = null;  // will hold the GIF instance from gif.js
 
 // --- ADD: Variables to track selection and resizing state ---
 let selectedShape = null;        // which shape (if any) is selected
@@ -285,9 +281,8 @@ arrowBtn.addEventListener("click", () => {
   clearEditor();
 });
 
-// Start/Stop GIF recording
-startGifBtn.addEventListener("click", startRecordingGIF);
-stopGifBtn.addEventListener("click", stopRecordingGIF);
+// --- ADD event listener for exportGifBtn ---
+exportGifBtn.addEventListener("click", exportAnimatedGif);
 
 // ======== MOUSE EVENTS ========
 
@@ -612,19 +607,6 @@ function animate() {
       dashOffset = 0;
     }
 
-    // If recording, add this frame to the GIF
-    if (isRecordingGIF && gif) {
-      try {
-        console.log("Adding frame to GIF");
-        gif.addFrame(canvas, {
-          copy: true,
-          delay: 100
-        });
-      } catch (error) {
-        console.error("Error adding frame:", error);
-      }
-    }
-
     requestAnimationFrame(animate);
 }
 
@@ -683,57 +665,51 @@ function drawArrowhead(ctx, fromX, fromY, toX, toY, color = "#000000") {
 
 // =========== GIF RECORDING LOGIC ===========
 
-// Start capturing frames in our animation loop
-function startRecordingGIF() {
-  if (!isRecordingGIF) {
-    console.log("Initializing GIF recorder...");
-    try {
-      gif = new GIF({
-        workers: 1,
-        quality: 10,
-        width: canvas.width,
-        height: canvas.height,
-        workerScript: 'gif.worker.js'  // Local path
-      });
-      
-      gif.on('progress', function(p) {
-        console.log('GIF Progress: ' + Math.round(p * 100) + '%');
-      });
-      
-      isRecordingGIF = true;
-      console.log("Recording started successfully");
-    } catch (error) {
-      console.error("Error starting GIF recording:", error);
+// --- MODIFIED: Combined start/stop and export into a single function ---
+function exportAnimatedGif() {
+  console.log("Initializing GIF recorder and starting export...");
+  let gif = new GIF({ // gif is now local variable
+    workers: 2, // Increased workers for faster rendering
+    quality: 7, // Improved quality (1-10, 1 is best)
+    width: canvas.width,
+    height: canvas.height,
+    workerScript: 'gif.worker.js'
+  });
+
+  gif.on('progress', function(p) {
+    console.log('GIF Progress: ' + Math.round(p * 100) + '%');
+  });
+
+  gif.on("finished", function(blob) {
+    console.log("GIF rendering finished. Creating download link...");
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "animated_diagram.gif"; // More descriptive filename
+    link.click();
+    URL.revokeObjectURL(url);
+    gif = null; // Cleanup
+  });
+
+  // --- NEW: Capture frames for a set duration (e.g., 3 seconds) ---
+  const captureDurationMs = 3000; // 3 seconds
+  const frameDelayMs = 100;       // Delay between frames (adjust as needed)
+  const numFrames = captureDurationMs / frameDelayMs;
+  let frameCount = 0;
+
+  function captureFrame() {
+    if (frameCount < numFrames) {
+      console.log("Adding frame to GIF - Frame count:", frameCount + 1);
+      gif.addFrame(canvas, { copy: true, delay: frameDelayMs });
+      frameCount++;
+      requestAnimationFrame(captureFrame); // Capture next frame in the animation loop
+    } else {
+      console.log("Finished capturing frames. Rendering GIF...");
+      gif.render(); // Render when all frames are captured
     }
   }
-}
 
-// Stop capturing and finalize the GIF
-function stopRecordingGIF() {
-  if (isRecordingGIF) {
-    isRecordingGIF = false;
-    console.log("Recording stopped. Rendering GIF...");
-
-    // Render the GIF
-    gif.on("finished", function(blob) {
-      console.log("GIF rendering finished. Creating download link...");
-      const url = URL.createObjectURL(blob);
-
-      // Create a temporary link element to download the file
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "diagram.gif";
-
-      // Programmatically click the link to download
-      link.click();
-
-      // Cleanup references
-      URL.revokeObjectURL(url);
-      gif = null;
-    });
-
-    gif.render(); // start async rendering
-  }
+  captureFrame(); // Start capturing frames
 }
 
 // ========== ADD: Canvas drag/drop listeners ==========
