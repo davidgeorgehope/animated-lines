@@ -1039,7 +1039,10 @@ function shapeToSerializable(shape) {
       imgSrc: shape.img.src,
       color: shape.color,
       textColor: shape.textColor,
-      fillColor: shape.fillColor
+      fillColor: shape.fillColor,
+      // --- ADD: Save lineWidth and isAnimated for shapes ---
+      lineWidth: shape.lineWidth,
+      isAnimated: shape.isAnimated
     };
   } else if (shape instanceof TextShape) {
     return {
@@ -1052,7 +1055,9 @@ function shapeToSerializable(shape) {
       fontFamily: shape.fontFamily,
       color: shape.color,
       textColor: shape.textColor,
-      fillColor: shape.fillColor
+      fillColor: shape.fillColor,
+      // --- ADD: Save lineWidth for shapes ---
+      lineWidth: shape.lineWidth
     };
   } else {
     // Default "Shape"
@@ -1068,7 +1073,10 @@ function shapeToSerializable(shape) {
       fontFamily: shape.fontFamily || "Arial",
       color: shape.color,
       textColor: shape.textColor,
-      fillColor: shape.fillColor
+      fillColor: shape.fillColor,
+      // --- ADD: Save lineWidth and isAnimated for shapes ---
+      lineWidth: shape.lineWidth,
+      isAnimated: shape.isAnimated
     };
   }
 }
@@ -1101,11 +1109,12 @@ function shapeFromSerializable(sdata) {
     newShape.fontSize = sdata.fontSize || 14;
     newShape.fontFamily = sdata.fontFamily || "Arial";
   }
-  // --- ADD: Restore color ---
+  // --- ADD: Restore color, fillColor, textColor, lineWidth, isAnimated ---
   newShape.color = sdata.color || "#333";
-  // NEW:
   newShape.textColor = sdata.textColor || "#000";
   newShape.fillColor = sdata.fillColor || "#e8f1fa";
+  newShape.lineWidth = sdata.lineWidth || 2;
+  newShape.isAnimated = sdata.isAnimated || false;
 
   // IMPORTANT: restore the original ID here
   newShape.id = sdata.id;
@@ -1117,7 +1126,16 @@ function saveDiagram() {
   const exportData = {
     shapeCounter: shapeCounter,
     shapes: shapes.map(shapeToSerializable),
-    arrows: arrows
+    arrows: arrows,
+    // --- ADD: Save canvasBgColor ---
+    canvasBgColor: canvasBgColor,
+    // --- ADD: Save arrow properties ---
+    arrows: arrows.map(arrow => ({
+      fromId: arrow.fromId,
+      toId: arrow.toId,
+      color: arrow.color,
+      lineWidth: arrow.lineWidth
+    }))
   };
 
   const dataStr =
@@ -1174,10 +1192,24 @@ function importDiagram(jsonText) {
     shapeCounter = Math.max(importData.shapeCounter, maxId + 1);
 
     // Restore arrows
-    arrows = importData.arrows || [];
+    // --- MOD: Restore arrow properties from saved data ---
+    arrows = (importData.arrows || []).map(arrowData => ({
+      fromId: arrowData.fromId,
+      toId: arrowData.toId,
+      color: arrowData.color,
+      lineWidth: arrowData.lineWidth
+    }));
 
     // Optionally, reset the selected shape
     selectedShape = null;
+
+    // --- ADD: Restore canvasBgColor ---
+    canvasBgColor = importData.canvasBgColor || "#ffffff";
+    // --- ADD: Update canvas background color picker value ---
+    const canvasColorPicker = document.getElementById("canvasColorPicker");
+    if (canvasColorPicker) {
+      canvasColorPicker.value = canvasBgColor;
+    }
 
     console.log("Diagram loaded successfully!");
   } catch (error) {
