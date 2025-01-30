@@ -295,44 +295,46 @@ stopGifBtn.addEventListener("click", stopRecordingGIF);
 canvas.addEventListener("mousedown", (e) => {
   const { x, y } = getCanvasMousePos(e);
 
-  // First, check if we're clicking on a resize handle of the currently selected shape
+  // Check if user clicked a resize handle...
   if (selectedShape) {
     const handleIndex = getHandleIndexAtPos(selectedShape, x, y);
     if (handleIndex !== -1) {
-      // We clicked on a handle: go into "resizing" mode
       isResizing = true;
       resizeHandleIndex = handleIndex;
       return;
     }
   }
 
-  // If not clicking a handle, see if we're clicking on a shape to either select or drag
+  // Check if user clicked on a shape
   const clickedShape = findShapeUnderMouse(x, y);
   if (clickedShape) {
-    // If "select" tool is active, we might just select the shape...
+    // If in "select" mode, select it
     if (currentTool === "select") {
-      // Set it as selected
       selectedShape = clickedShape;
-      // Also prepare to drag if needed
       draggingShape = clickedShape;
       dragOffsetX = x - clickedShape.x;
       dragOffsetY = y - clickedShape.y;
-      // --- ADD: Deselect any arrow if a shape is selected ---
+
+      // Deselect arrow if shape is selected
       selectedArrow = null;
-    }
-  } else {
-    // If user clicks empty space, deselect anything
-    selectedShape = null;
-    // --- ADD: Check if we clicked on an arrow to select it ---
-    if (currentTool === "select") {
-      const clickedArrow = findArrowUnderMouse(x, y);
-      if (clickedArrow) {
-        selectedArrow = clickedArrow;
-        selectedShape = null; // Deselect any shape
+
+      // Now update the animatedBorderBtn text
+      if (selectedShape.isAnimated) {
+        animatedBorderBtn.textContent = "On";
+        isAnimatedOn = true;
       } else {
-        selectedArrow = null; // Deselect arrow if clicking on canvas bg
+        animatedBorderBtn.textContent = "Off";
+        isAnimatedOn = false;
       }
     }
+  } else {
+    // Empty space => deselect shape and arrow
+    selectedShape = null;
+    selectedArrow = null;
+
+    // Reset the button to "Off"
+    animatedBorderBtn.textContent = "Off";
+    isAnimatedOn = false;
   }
 
   if (currentTool === "rect") {
@@ -1353,9 +1355,29 @@ lineThicknessPicker.addEventListener("input", (e) => {
 }); 
 
 // --- ADD: Event listener for the animated border checkbox ---
-const animatedBorderCheckbox = document.getElementById("animatedBorderCheckbox");
-animatedBorderCheckbox.addEventListener("change", (e) => {
-  if (selectedShape) {
-    selectedShape.isAnimated = e.target.checked;
-  }
+const animatedBorderBtn = document.getElementById('animatedBorderBtn');
+
+// Store overall "On / Off" in a variable (if you want a single global toggle).
+// Alternatively, you can directly toggle the selected shape's isAnimated property each time.
+let isAnimatedOn = false;
+
+animatedBorderBtn.addEventListener('click', () => {
+  if (!selectedShape) return;
+
+  // Flip the global state
+  isAnimatedOn = !isAnimatedOn;
+
+  // Update button label
+  animatedBorderBtn.textContent = isAnimatedOn ? 'On' : 'Off';
+
+  // If you want a per-shape toggle, do:
+  selectedShape.isAnimated = isAnimatedOn;
+
+  // Or more advanced: if you want multiple shapes to remain individually toggled,
+  // then remove "isAnimatedOn" and do:
+  // selectedShape.isAnimated = !selectedShape.isAnimated;
+  // animatedBorderBtn.textContent = selectedShape.isAnimated ? 'On' : 'Off';
+
+  // Redraw canvas
+  redrawCanvas();
 }); 
