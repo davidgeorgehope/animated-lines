@@ -260,38 +260,42 @@ class Shape {
     this.textColor = "#000";
     this.lineWidth = 2;
     this.isAnimated = false;
+    this.opacity = 1;
   }
 
   draw(ctx) {
     ctx.save();
-
-    // For the fill
+    
+    // Set global alpha based on the shape's opacity
+    ctx.globalAlpha = this.opacity;
+    
+    // Fill the shape
     ctx.fillStyle = this.fillColor;
     ctx.fillRect(this.x, this.y, this.width, this.height);
 
-    // If this shape is the one selected for an animated border, set the line dash:
+    // Check for animated border
     if (this.isAnimated) {
       ctx.setLineDash([10, 5]);
-      ctx.lineDashOffset = -dashOffset;
+      // Use exportDashOffset when exporting; otherwise use the live dashOffset
+      ctx.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
     } else {
-      // Otherwise, no dash
       ctx.setLineDash([]);
       ctx.lineDashOffset = 0;
     }
-
-    // Now stroke the shape normally, but possibly dotted
+    
+    // Stroke the shape
     ctx.strokeStyle = this.color;
     ctx.lineWidth = this.lineWidth;
     ctx.strokeRect(this.x, this.y, this.width, this.height);
-
-    // Draw text
+    
+    // Draw text centered in the shape
     ctx.fillStyle = this.textColor;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     const metrics = ctx.measureText(this.text);
     const textX = this.x + (this.width - metrics.width) / 2;
     const textY = this.y + this.height / 2 + (this.fontSize / 3);
     ctx.fillText(this.text, textX, textY);
-
+    
     ctx.restore();
   }
 
@@ -315,15 +319,18 @@ class Shape {
 // ========== ADD: New ImageShape class ==========
 class ImageShape extends Shape {
   constructor(x, y, w, h, img) {
-    // Let the parent constructor store x, y, width, height
+    // Let the parent constructor store x, y, width, height, and set default opacity
     super(x, y, w, h, ""); 
     this.img = img;
   }
 
   draw(ctx) {
     if (!this.img) return;
-    // Draw using the shape's current width & height so the user can resize
+    ctx.save();
+    // Set global alpha to use the shape's opacity
+    ctx.globalAlpha = this.opacity;
     ctx.drawImage(this.img, this.x, this.y, this.width, this.height);
+    ctx.restore();
   }
 
   // (Optional) If you want a bounding-box check:
@@ -1534,4 +1541,17 @@ animatedBorderBtn.addEventListener('click', () => {
   // Redraw canvas
   redrawCanvas();
 }); 
+
+// Get reference to the new opacity slider
+const opacityRange = document.getElementById("opacityRange");
+
+// Listen for changes on the opacity slider
+opacityRange.addEventListener("input", (e) => {
+  if (selectedShape) {
+    // Set the selected shape's opacity to the slider value (a number between 0 and 1)
+    selectedShape.opacity = parseFloat(e.target.value);
+    // Optionally redraw the canvas if you have a redraw function
+    redrawCanvas();
+  }
+});
 
