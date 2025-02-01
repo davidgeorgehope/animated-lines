@@ -4,6 +4,9 @@
  *           Now supporting image drag & drop
  **************************************************/
 
+let exportingGif = false;
+let exportDashOffset = 0; 
+
 const canvas = document.getElementById("myCanvas");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 console.log("gifuct:", window.gifuct);
@@ -668,13 +671,8 @@ let canvasBgColor = "#ffffff";
 
 // The animate() function:
 function animate() {
-    ctx.fillStyle = canvasBgColor; // Use our background color variable
+    ctx.fillStyle = canvasBgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Now clearRect() isn't strictly necessary, but if you want
-    // to preserve partial transparency, you could skip fillRect.
-    // For a solid background, remove clearRect or comment it out.
-    // ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Draw shapes
     shapes.forEach((shape) => {
@@ -722,10 +720,10 @@ function animate() {
       drawArrowSelectionHandles(ctx, selectedArrow);
     }
 
-    // Update dash offset
-    dashOffset += 2;
-    if (dashOffset > 10000) {
-      dashOffset = 0;
+    // Only update the live dash offset if we're not in export mode.
+    if (!exportingGif) {
+      dashOffset += 2;
+      if (dashOffset > 10000) dashOffset = 0;
     }
 
     requestAnimationFrame(animate);
@@ -735,11 +733,9 @@ function animate() {
 function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
   ctx.save();
   ctx.setLineDash([6, 4]);
-  ctx.lineDashOffset = -dashOffset;
-
-  // Use arrowObj's color & lineWidth
+  // Use exportDashOffset when exporting; otherwise, use the negative of dashOffset
+  ctx.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
   ctx.strokeStyle = arrowObj.color || "#000";
-  // --- MOD: Use arrowObj's lineWidth ---
   ctx.lineWidth = arrowObj.lineWidth || 2;
 
   ctx.beginPath();
@@ -755,7 +751,7 @@ function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
 function drawTempLine(ctx, fromX, fromY, toX, toY) {
   ctx.save();
   ctx.setLineDash([6, 4]);
-  ctx.lineDashOffset = -dashOffset;
+  ctx.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
   ctx.strokeStyle = "blue";
   ctx.lineWidth = 1.5;
 
@@ -788,49 +784,56 @@ function drawArrowhead(ctx, fromX, fromY, toX, toY, color = "#000000") {
 
 // --- MODIFIED: Combined start/stop and export into a single function ---
 function exportAnimatedGif() {
+  // Set export mode and initialize the dash offset used in export.
+  exportingGif = true;
+  exportDashOffset = -dashOffset; // Initialize with negative version to mimic live behavior
+
   console.log("Initializing GIF recorder and starting export...");
-  let gif = new GIF({ // gif is now local variable
-    workers: 2, // Increased workers for faster rendering
-    quality: 7, // Improved quality (1-10, 1 is best)
+  let gif = new GIF({
+    workers: 2,
+    quality: 7,
     width: canvas.width,
     height: canvas.height,
     workerScript: 'gif.worker.js'
   });
 
-  gif.on('progress', function(p) {
-    console.log('GIF Progress: ' + Math.round(p * 100) + '%');
+  gif.on('progress', function (p) {
+    console.log("GIF Progress: " + Math.round(p * 100) + '%');
   });
 
-  gif.on("finished", function(blob) {
+  gif.on("finished", function (blob) {
     console.log("GIF rendering finished. Creating download link...");
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "animated_diagram.gif"; // More descriptive filename
+    link.download = "animated_diagram.gif";
     link.click();
     URL.revokeObjectURL(url);
-    gif = null; // Cleanup
+    gif = null;
+    // Exit export mode once done.
+    exportingGif = false;
   });
 
-  // --- NEW: Capture frames for a set duration (e.g., 3 seconds) ---
-  const captureDurationMs = 3000; // 3 seconds
-  const frameDelayMs = 100;       // Delay between frames (adjust as needed)
+  // For example, capture at 30 FPS to manage file size.
+  const captureDurationMs = 3000; // Total capture duration; adjust as needed.
+  const frameDelayMs = 33;        // About 30 FPS (33 ms per frame).
   const numFrames = captureDurationMs / frameDelayMs;
   let frameCount = 0;
 
   function captureFrame() {
     if (frameCount < numFrames) {
-      console.log("Adding frame to GIF - Frame count:", frameCount + 1);
+      // Update exportDashOffset in the same direction as the live dash offset.
+      exportDashOffset -= 2; // Use negative increment instead
       gif.addFrame(canvas, { copy: true, delay: frameDelayMs });
       frameCount++;
-      requestAnimationFrame(captureFrame); // Capture next frame in the animation loop
+      setTimeout(captureFrame, frameDelayMs);
     } else {
       console.log("Finished capturing frames. Rendering GIF...");
-      gif.render(); // Render when all frames are captured
+      gif.render();
     }
   }
 
-  captureFrame(); // Start capturing frames
+  captureFrame();
 }
 
 // ========== ADD: Canvas drag/drop listeners ==========
@@ -1531,3 +1534,4 @@ animatedBorderBtn.addEventListener('click', () => {
   // Redraw canvas
   redrawCanvas();
 }); 
+
