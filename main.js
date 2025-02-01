@@ -90,22 +90,24 @@ document.addEventListener("click", () => {
 
 // Right-click on the canvas
 canvas.addEventListener("contextmenu", (e) => {
-  e.preventDefault(); // Prevent default browser menu
-
-  // Get mouse position on the canvas
-  const { x, y } = getCanvasMousePos(e);
-
-  // Check if we right-clicked on a shape
-  const shape = findShapeUnderMouse(x, y);
-
-  // If we did, select it and show our context menu at the mouse location
+  e.preventDefault();
+  // Determine the shape under the mouse using canvas coordinates
+  const rect = canvas.getBoundingClientRect();
+  // Calculate canvas coordinates for shape detection (taking transform into account)
+  const scaleMatch = canvas.style.transform.match(/scale\((.*?)\)/);
+  const scale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+  const canvasX = (e.clientX - rect.left) / scale;
+  const canvasY = (e.clientY - rect.top) / scale;
+  
+  const shape = findShapeUnderMouse(canvasX, canvasY);
+  
   if (shape) {
     selectedShape = shape;
-    contextMenu.style.left = x + "px";
-    contextMenu.style.top = y + "px";
+    // Position the context menu using the event's client coordinates
+    contextMenu.style.left = e.clientX + "px";
+    contextMenu.style.top = e.clientY + "px";
     contextMenu.style.display = "block";
   } else {
-    // Otherwise, hide it
     contextMenu.style.display = "none";
   }
 });
