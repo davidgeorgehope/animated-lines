@@ -1555,3 +1555,94 @@ opacityRange.addEventListener("input", (e) => {
   }
 });
 
+// Add this code near your other event listeners (e.g., after the drag/drop listeners)
+// Paste event for images from the clipboard
+document.addEventListener("paste", (e) => {
+  const clipboardData = e.clipboardData;
+  if (!clipboardData) return;
+  
+  const items = clipboardData.items;
+  if (!items) return;
+  
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf("image") !== -1) {
+      const blob = items[i].getAsFile();
+      if (blob) {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          const img = new Image();
+          img.onload = function() {
+            // Calculate position to place the image at the center of the canvas
+            const x = canvas.width / 2 - img.width / 2;
+            const y = canvas.height / 2 - img.height / 2;
+            // Create a new ImageShape and add to shapes
+            const imageShape = new ImageShape(x, y, img.width, img.height, img);
+            shapes.push(imageShape);
+          };
+          img.src = evt.target.result;
+        };
+        reader.readAsDataURL(blob);
+        // Only paste the first found image
+        break;
+      }
+    }
+  }
+});
+
+// Get reference to the "Remove White" button
+const btnRemoveWhite = document.getElementById("btnRemoveWhite");
+
+btnRemoveWhite.addEventListener("click", () => {
+  if (!selectedShape) {
+    console.log("No object selected.");
+    return;
+  }
+  if (!(selectedShape instanceof ImageShape)) {
+    console.log("Selected object is not an image.");
+    return;
+  }
+  
+  // Create an offscreen canvas with the dimensions of the current image
+  const offCanvas = document.createElement("canvas");
+  offCanvas.width = selectedShape.img.width;
+  offCanvas.height = selectedShape.img.height;
+  
+  const offCtx = offCanvas.getContext("2d");
+  // Draw the original image into the offscreen canvas
+  offCtx.drawImage(selectedShape.img, 0, 0);
+  
+  // Get pixel data
+  const imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
+  const data = imgData.data;
+  
+  // Loop through each pixel, replacing near-white pixels with transparent ones.
+  // This tolerance will treat any pixel with r, g, b values > 240 as white.
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    if (r > 240 && g > 240 && b > 240) { 
+      // Set alpha channel to 0 (transparent)
+      data[i + 3] = 0;
+    }
+  }
+  
+  // Put the modified pixel data back into the offscreen canvas
+  offCtx.putImageData(imgData, 0, 0);
+  
+  // Create a new image from the modified canvas
+  const newImg = new Image();
+  newImg.onload = function() {
+    // Update the selected shape's image to use the new Image
+    selectedShape.img = newImg;
+    // Optionally, update dimensions if desired:
+    selectedShape.width = newImg.width;
+    selectedShape.height = newImg.height;
+    // Redraw the canvas if needed (assuming your animation loop is running continuously)
+    redrawCanvas();
+  };
+  
+  // Set the new source to the canvas data URL
+  newImg.src = offCanvas.toDataURL();
+});
+
