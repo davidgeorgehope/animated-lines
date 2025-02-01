@@ -5,8 +5,8 @@
  **************************************************/
 
 const canvas = document.getElementById("myCanvas");
-const ctx = canvas.getContext("2d");
-
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
+console.log("gifuct:", window.gifuct);
 // Set to 1200×627 for LinkedIn
 canvas.width = 1200;
 canvas.height = 1200;
@@ -118,6 +118,128 @@ const lineThicknessPicker = document.getElementById("lineThicknessPicker");
 // --- ADD: Variables for animated border ---
 let isAnimatedBorderEnabled = false;
 let animatedBorderShape = null;
+
+// AnimatedGifShape: A class to handle animated GIF frames decoded via gifuct-js
+class AnimatedGifShape {
+  constructor(x, y, frames, speedMultiplier = 1) {
+    this.x = x;
+    this.y = y;
+    this.frames = frames;
+    this.speedMultiplier = speedMultiplier;
+    this.currentFrameIndex = 0;
+    this.lastFrameTime = performance.now();
+    
+    // Create a background canvas for proper frame compositing
+    this.backgroundCanvas = document.createElement("canvas");
+    this.backgroundCtx = this.backgroundCanvas.getContext("2d", {
+      willReadFrequently: true,
+      alpha: true
+    });
+    
+    // Determine dimensions based on all frames
+    this.width = Math.max(...frames.map(f => f.dims.width + f.dims.left));
+    this.height = Math.max(...frames.map(f => f.dims.height + f.dims.top));
+    
+    this.backgroundCanvas.width = this.width;
+    this.backgroundCanvas.height = this.height;
+    
+    this.preRenderFrames();
+  }
+
+  preRenderFrames() {
+    this.imageFrames = this.frames.map((frame) => {
+      const { dims, patch } = frame;
+      const frameCanvas = document.createElement("canvas");
+      frameCanvas.width = this.width;
+      frameCanvas.height = this.height;
+      const frameCtx = frameCanvas.getContext("2d", {
+        willReadFrequently: true,
+        alpha: true
+      });
+      
+      // Disable image smoothing to keep pixels crisp
+      frameCtx.imageSmoothingEnabled = false;
+      
+      // Create a temporary canvas for the patch
+      const patchCanvas = document.createElement("canvas");
+      patchCanvas.width = dims.width;
+      patchCanvas.height = dims.height;
+      const patchCtx = patchCanvas.getContext("2d");
+      patchCtx.imageSmoothingEnabled = false;
+      
+      // Convert the patch Uint8ClampedArray into ImageData and paint it
+      const imageData = new ImageData(new Uint8ClampedArray(patch), dims.width, dims.height);
+      patchCtx.putImageData(imageData, 0, 0);
+      
+      // Draw the patch onto the frameCanvas at the correct position
+      frameCtx.drawImage(patchCanvas, dims.left, dims.top);
+      
+      // Return an object with its canvas, dimensions, delay (adjusted with speedMultiplier)
+      // and disposalType (defaulting to 2 for "restore to background")
+      return {
+        canvas: frameCanvas,
+        dims: dims,
+        delay: frame.delay ? (frame.delay / this.speedMultiplier) : 100,
+        disposalType: frame.disposalType || 2
+      };
+    });
+  }
+  
+  update() {
+    const now = performance.now();
+    const currentFrame = this.imageFrames[this.currentFrameIndex];
+    const delayMs = currentFrame.delay || 100;
+    
+    if (now - this.lastFrameTime > delayMs) {
+      // If the current frame has disposal type 2, clear that area in the background canvas
+      if (currentFrame.disposalType === 2) {
+        this.backgroundCtx.clearRect(
+          currentFrame.dims.left,
+          currentFrame.dims.top,
+          currentFrame.dims.width,
+          currentFrame.dims.height
+        );
+      }
+      // Advance to the next frame with wrap-around
+      this.currentFrameIndex = (this.currentFrameIndex + 1) % this.imageFrames.length;
+      this.lastFrameTime = now;
+    }
+  }
+  
+  draw(ctx) {
+    // Update the current frame based on elapsed time
+    this.update();
+    const frame = this.imageFrames[this.currentFrameIndex];
+    
+    ctx.save();
+    // Disable smoothing on the main context too
+    ctx.imageSmoothingEnabled = false;
+    
+    // Draw the background first
+    ctx.drawImage(this.backgroundCanvas, this.x, this.y, this.width, this.height);
+    // Then draw the current frame over the background
+    ctx.drawImage(frame.canvas, this.x, this.y, this.width, this.height);
+    
+    // Depending on the disposal mode, update the background canvas
+    if (frame.disposalType !== 2) {
+      this.backgroundCtx.drawImage(frame.canvas, 0, 0);
+    }
+    
+    ctx.restore();
+  }
+  
+  containsPoint(px, py) {
+    return (px >= this.x && px <= this.x + this.width &&
+            py >= this.y && py <= this.y + this.height);
+  }
+  
+  getCenter() {
+    return {
+      x: this.x + this.width / 2,
+      y: this.y + this.height / 2
+    };
+  }
+}
 
 // Shape class
 class Shape {
@@ -303,7 +425,6 @@ canvas.addEventListener("mousedown", (e) => {
   // Check if user clicked on a shape
   const clickedShape = findShapeUnderMouse(x, y);
   if (clickedShape) {
-    // If in "select" mode, select it
     if (currentTool === "select") {
       selectedShape = clickedShape;
       draggingShape = clickedShape;
@@ -313,7 +434,7 @@ canvas.addEventListener("mousedown", (e) => {
       // Deselect arrow if shape is selected
       selectedArrow = null;
 
-      // Now update the animatedBorderBtn text
+      // Now update the animatedBorderBtn text, etc.
       if (selectedShape.isAnimated) {
         animatedBorderBtn.textContent = "On";
         isAnimatedOn = true;
@@ -323,26 +444,28 @@ canvas.addEventListener("mousedown", (e) => {
       }
     }
   } else {
-    // Empty space => deselect shape and arrow
-    selectedShape = null;
-    selectedArrow = null;
-
-    // Reset the button to "Off"
-    animatedBorderBtn.textContent = "Off";
-    isAnimatedOn = false;
+    // If no shape was clicked, try to select an arrow
+    const clickedArrow = findArrowUnderMouse(x, y);
+    if (clickedArrow) {
+      selectedArrow = clickedArrow;
+      selectedShape = null;
+    } else {
+      // Empty space => deselect both shape and arrow
+      selectedShape = null;
+      selectedArrow = null;
+      animatedBorderBtn.textContent = "Off";
+      isAnimatedOn = false;
+    }
   }
 
   if (currentTool === "rect") {
-    // Prompt for text
     const shapeText = prompt("Enter text for the rectangle:", "Shape");
     if (shapeText !== null) {
-      // Create shape around the click position
       const newShape = new Shape(x - 50, y - 25, 100, 50, shapeText);
       shapes.push(newShape);
     }
-  }
-  else if (currentTool === "arrow") {
-    // Check if we're clicking on a shape to begin drawing an arrow
+  } else if (currentTool === "arrow") {
+    // Start drawing an arrow
     const clickedShape = findShapeUnderMouse(x, y);
     if (clickedShape) {
       isDrawingLine = true;
@@ -354,10 +477,8 @@ canvas.addEventListener("mousedown", (e) => {
   if (currentTool === "text") {
     const shapeText = prompt("Enter your text:", "New Text");
     if (shapeText !== null) {
-      // Grab chosen font size/family from the dropdowns
       const fontSize = parseInt(fontSizeSelect.value) || 14;
-      const fontFamily = fontFamilySelect.value || 'Arial';
-      // Create a new TextShape
+      const fontFamily = fontFamilySelect.value || "Arial";
       const newTextShape = new TextShape(x, y, shapeText, fontSize, fontFamily);
       shapes.push(newTextShape);
     }
@@ -720,8 +841,6 @@ canvas.addEventListener("dragover", (e) => {
 canvas.addEventListener("drop", (e) => {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
-
-  // Get where on the canvas the file is dropped
   const dropX = e.clientX - rect.left;
   const dropY = e.clientY - rect.top;
 
@@ -729,25 +848,48 @@ canvas.addEventListener("drop", (e) => {
   if (!files || files.length === 0) return;
 
   const file = files[0];
-  const fileReader = new FileReader();
 
-  // Make sure it's an image
+  // Only accept image files
   if (!file.type.startsWith("image/")) {
     console.log("Dropped file is not an image.");
     return;
   }
 
-  fileReader.onload = (evt) => {
-    const img = new Image();
-    img.onload = () => {
-      // Use the natural width/height as a default. User can resize later.
-      const imageShape = new ImageShape(dropX, dropY, img.width, img.height, img);
-      shapes.push(imageShape);
-    };
-    img.src = evt.target.result;
-  };
+  const fileReader = new FileReader();
 
-  fileReader.readAsDataURL(file);
+  // Check if the file is a GIF
+  if (file.type === "image/gif") {
+    fileReader.onload = (evt) => {
+      const buffer = evt.target.result;
+      try {
+        // Use whichever global is available
+        const lib = (typeof window.gifuct !== "undefined" ? window.gifuct : (typeof gifuct !== "undefined" ? gifuct : null));
+        if (!lib) {
+          console.error("gifuct library is not loaded.");
+          return;
+        }
+        const gifData = lib.parseGIF(buffer);
+        const frames = lib.decompressFrames(gifData, true);
+        // Create an AnimatedGifShape from the decoded frames
+        const animatedGifShape = new AnimatedGifShape(dropX, dropY, frames, 1);
+        shapes.push(animatedGifShape);
+      } catch (error) {
+        console.error("Error decoding animated GIF:", error);
+      }
+    };
+    fileReader.readAsArrayBuffer(file);
+  } else {
+    // Regular (non-GIF) image processing
+    fileReader.onload = (evt) => {
+      const img = new Image();
+      img.onload = () => {
+        const imageShape = new ImageShape(dropX, dropY, img.width, img.height, img);
+        shapes.push(imageShape);
+      };
+      img.src = evt.target.result;
+    };
+    fileReader.readAsDataURL(file);
+  }
 });
 
 // Start the animation loop
