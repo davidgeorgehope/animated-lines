@@ -445,8 +445,11 @@ canvas.addEventListener("mousedown", (e) => {
 
       // Deselect arrow if shape is selected
       selectedArrow = null;
+      
+      // Update the opacity slider to match the selected shape's opacity.
+      opacityRange.value = selectedShape.opacity;
 
-      // Now update the animatedBorderBtn text, etc.
+      // Update animated border button state.
       if (selectedShape.isAnimated) {
         animatedBorderBtn.textContent = "On";
         isAnimatedOn = true;
@@ -461,10 +464,14 @@ canvas.addEventListener("mousedown", (e) => {
     if (clickedArrow) {
       selectedArrow = clickedArrow;
       selectedShape = null;
+      // Reset opacity slider because no shape is selected.
+      opacityRange.value = 1;
     } else {
       // Empty space => deselect both shape and arrow
       selectedShape = null;
       selectedArrow = null;
+      // Reset opacity slider to default (1)
+      opacityRange.value = 1;
       animatedBorderBtn.textContent = "Off";
       isAnimatedOn = false;
     }
@@ -1680,6 +1687,14 @@ class FreeArrow {
 
     // (Optional) Draw arrowhead and selection handles here
     ctx.restore();
+  }
+}
+
+function updateOpacityControl() {
+  if (selectedShape) {
+    opacityRange.value = selectedShape.opacity;
+  } else {
+    opacityRange.value = 1; // or another default value if no shape is selected
   }
 }
 
