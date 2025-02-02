@@ -567,15 +567,7 @@ canvas.addEventListener("mousemove", (e) => {
   const { x, y } = getCanvasMousePos(e);
 
   if (isDrawingFreeArrow && freeArrowStart) {
-    // Update the canvas to show the arrow being drawn
-    requestAnimationFrame(() => {
-      animate(); // Redraw everything
-      // Draw the current arrow
-      drawArrow(ctx, freeArrowStart.x, freeArrowStart.y, x, y, {
-        color: arrowColorPicker.value,
-        lineWidth: parseInt(lineThicknessPicker.value) || 2
-      });
-    });
+    currentFreeArrowPos = { x, y };
     return;
   }
 
@@ -827,7 +819,7 @@ function animate() {
       shape.draw(ctx);
     });
 
-    // Draw all arrows (both connected and free)
+    // Draw arrows (both connected and free)
     arrows.forEach((arrow) => {
         if (arrow.fromId !== undefined) {
             // Connected arrow
@@ -852,29 +844,35 @@ function animate() {
         }
     });
 
-    // If currently drawing an arrow, draw the "rubber band" line
+    // If currently drawing a connected arrow (rubber band), draw it
     if (isDrawingLine && arrowStartShape) {
-      // from arrowStartShape edge to current mouse position
       const fromPt = getEdgeIntersection(
         arrowStartShape,
         arrowEndPos.x,
         arrowEndPos.y
       );
-      // draw a temporary line to the mouse
       drawTempLine(ctx, fromPt.x, fromPt.y, arrowEndPos.x, arrowEndPos.y);
     }
 
-    // --- ADD: If there's a selected shape, draw its resize handles ---
+    // --- New: If a free arrow is being drawn, draw it
+    if (isDrawingFreeArrow && freeArrowStart && currentFreeArrowPos) {
+      drawArrow(ctx, freeArrowStart.x, freeArrowStart.y, currentFreeArrowPos.x, currentFreeArrowPos.y, {
+          color: arrowColorPicker.value,
+          lineWidth: parseInt(lineThicknessPicker.value) || 2
+      });
+    }
+
+    // Draw resize handles if a shape is selected
     if (selectedShape) {
       drawResizeHandles(ctx, selectedShape);
     }
 
-    // --- ADD: Draw arrow selection handles if an arrow is selected ---
+    // Draw arrow selection handles if an arrow is selected
     if (selectedArrow) {
       drawArrowSelectionHandles(ctx, selectedArrow);
     }
 
-    // Only update the live dash offset if we're not in export mode.
+    // Update dash offset only once per frame
     if (!exportingGif) {
       dashOffset += 2;
       if (dashOffset > 10000) dashOffset = 0;
