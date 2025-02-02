@@ -1210,9 +1210,9 @@ function shapeToSerializable(shape) {
       color: shape.color,
       textColor: shape.textColor,
       fillColor: shape.fillColor,
-      // --- ADD: Save lineWidth and isAnimated for shapes ---
       lineWidth: shape.lineWidth,
-      isAnimated: shape.isAnimated
+      isAnimated: shape.isAnimated,
+      opacity: shape.opacity !== undefined ? shape.opacity : 1
     };
   } else if (shape instanceof TextShape) {
     return {
@@ -1226,8 +1226,8 @@ function shapeToSerializable(shape) {
       color: shape.color,
       textColor: shape.textColor,
       fillColor: shape.fillColor,
-      // --- ADD: Save lineWidth for shapes ---
-      lineWidth: shape.lineWidth
+      lineWidth: shape.lineWidth,
+      opacity: shape.opacity !== undefined ? shape.opacity : 1
     };
   } else {
     // Default "Shape"
@@ -1244,9 +1244,9 @@ function shapeToSerializable(shape) {
       color: shape.color,
       textColor: shape.textColor,
       fillColor: shape.fillColor,
-      // --- ADD: Save lineWidth and isAnimated for shapes ---
       lineWidth: shape.lineWidth,
-      isAnimated: shape.isAnimated
+      isAnimated: shape.isAnimated,
+      opacity: shape.opacity !== undefined ? shape.opacity : 1
     };
   }
 }
@@ -1260,34 +1260,20 @@ function shapeFromSerializable(sdata) {
     img.src = sdata.imgSrc;
     newShape = new ImageShape(sdata.x, sdata.y, sdata.width, sdata.height, img);
   } else if (sdata.type === "TextShape") {
-    newShape = new TextShape(
-      sdata.x,
-      sdata.y,
-      sdata.text,
-      sdata.fontSize,
-      sdata.fontFamily
-    );
+    newShape = new TextShape(sdata.x, sdata.y, sdata.text, sdata.fontSize, sdata.fontFamily);
   } else {
-    newShape = new Shape(
-      sdata.x,
-      sdata.y,
-      sdata.width,
-      sdata.height,
-      sdata.text
-    );
-    // Restore any custom font info
+    newShape = new Shape(sdata.x, sdata.y, sdata.width, sdata.height, sdata.text);
     newShape.fontSize = sdata.fontSize || 14;
     newShape.fontFamily = sdata.fontFamily || "Arial";
   }
-  // --- ADD: Restore color, fillColor, textColor, lineWidth, isAnimated ---
+  // Restore other properties
   newShape.color = sdata.color || "#333";
   newShape.textColor = sdata.textColor || "#000";
   newShape.fillColor = sdata.fillColor || "#e8f1fa";
   newShape.lineWidth = sdata.lineWidth || 2;
   newShape.isAnimated = sdata.isAnimated || false;
-
-  // IMPORTANT: restore the original ID here
   newShape.id = sdata.id;
+  newShape.opacity = sdata.opacity !== undefined ? sdata.opacity : 1;
   return newShape;
 }
 
@@ -1297,9 +1283,7 @@ function saveDiagram() {
     shapeCounter: shapeCounter,
     shapes: shapes.map(shapeToSerializable),
     arrows: arrows,
-    // --- ADD: Save canvasBgColor ---
     canvasBgColor: canvasBgColor,
-    // --- ADD: Save arrow properties ---
     arrows: arrows.map(arrow => ({
       fromId: arrow.fromId,
       toId: arrow.toId,
@@ -1362,7 +1346,6 @@ function importDiagram(jsonText) {
     shapeCounter = Math.max(importData.shapeCounter, maxId + 1);
 
     // Restore arrows
-    // --- MOD: Restore arrow properties from saved data ---
     arrows = (importData.arrows || []).map(arrowData => ({
       fromId: arrowData.fromId,
       toId: arrowData.toId,
@@ -1373,9 +1356,9 @@ function importDiagram(jsonText) {
     // Optionally, reset the selected shape
     selectedShape = null;
 
-    // --- ADD: Restore canvasBgColor ---
+    // Restore canvasBgColor
     canvasBgColor = importData.canvasBgColor || "#ffffff";
-    // --- ADD: Update canvas background color picker value ---
+    // Update canvas background color picker value
     const canvasColorPicker = document.getElementById("canvasColorPicker");
     if (canvasColorPicker) {
       canvasColorPicker.value = canvasBgColor;
