@@ -1006,14 +1006,20 @@ function removeShapeById(id) {
 
 // 2) Keyboard event to listen for "Delete" or "Backspace"
 document.addEventListener("keydown", (e) => {
-  // Some browsers interpret "Backspace" differently; here we also handle "Delete" explicitly
-  if ((e.key === "Delete" || e.key === "Backspace") && selectedShape) {
-    // Check if the text input is focused, if so, do not delete shape
+  // Check for Delete or Backspace keys
+  if ((e.key === "Delete" || e.key === "Backspace") && (selectedShape || selectedArrow)) {
+    // If the text editor is active, don't delete
     if (document.activeElement === shapeEditorInput) {
       return;
     }
-    removeShapeById(selectedShape.id);
-    selectedShape = null; // Clear selection
+    if (selectedShape) {
+      removeShapeById(selectedShape.id);
+      selectedShape = null;
+    } else if (selectedArrow) {
+      // Remove the arrow from the array
+      arrows = arrows.filter(arrow => arrow !== selectedArrow);
+      selectedArrow = null;
+    }
   }
 });
 
@@ -1119,6 +1125,9 @@ if (contextDelete) {
         if (selectedShape) {
             removeShapeById(selectedShape.id);
             selectedShape = null;
+        } else if (selectedArrow) {
+            arrows = arrows.filter(arrow => arrow !== selectedArrow);
+            selectedArrow = null;
         }
         contextMenu.style.display = "none";
     });
@@ -1647,4 +1656,30 @@ btnRemoveWhite.addEventListener("click", () => {
   // Set the new source to the canvas data URL
   newImg.src = offCanvas.toDataURL();
 });
+
+class FreeArrow {
+  constructor(fromX, fromY, toX, toY, color = "#000", lineWidth = 2) {
+    this.fromX = fromX;
+    this.fromY = fromY;
+    this.toX = toX;
+    this.toY = toY;
+    this.color = color;
+    this.lineWidth = lineWidth;
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.lineDashOffset = -dashOffset;
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = this.lineWidth;
+    ctx.beginPath();
+    ctx.moveTo(this.fromX, this.fromY);
+    ctx.lineTo(this.toX, this.toY);
+    ctx.stroke();
+
+    // (Optional) Draw arrowhead and selection handles here
+    ctx.restore();
+  }
+}
 
