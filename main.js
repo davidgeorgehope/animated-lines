@@ -71,11 +71,17 @@ let isDrawingLine = false;
 let arrowStartShape = null; 
 let arrowEndPos = { x: 0, y: 0 };
 
+// --- ADD: Variables for arrow dragging ---
+let isDraggingArrow = false;
+let dragStartX = 0;
+let dragStartY = 0;
+
 // --- ADD: Variables to track selection and resizing state ---
 let selectedShape = null;        // which shape (if any) is selected
 let isResizing = false;          // are we currently resizing a shape?
 let resizeHandleIndex = -1;      // which handle is being dragged?
 const HANDLE_SIZE = 8;           // size of each resize handle
+
 // --- ADD: Arrow selection variables ---
 let selectedArrow = null;        // which arrow (if any) is selected
 const ARROW_HANDLE_SIZE = 6;     // slightly smaller than shape handles
@@ -418,11 +424,63 @@ arrowBtn.addEventListener("click", () => {
 // --- ADD event listener for exportGifBtn ---
 exportGifBtn.addEventListener("click", exportAnimatedGif);
 
+// Add to your global variables section:
+let freeArrows = [];    // array to store free arrows
+let isDrawingFreeArrow = false;
+let freeArrowStart = null;
+let currentFreeArrowPos = null; // Used to track the live mouse position while drawing
+
+// Add event listener for the Free Arrow button
+const freeArrowBtn = document.getElementById("toolFreeArrow");
+freeArrowBtn.addEventListener("click", () => {
+  currentTool = "freeArrow";
+  clearEditor();
+});
+
+// Add to your global variables section:
+let isDraggingArrowHandle = false;  // Are we dragging an endpoint?
+let draggedHandle = null;           // 'start' or 'end' to identify which endpoint
+
 // ======== MOUSE EVENTS ========
 
 // Mousedown
 canvas.addEventListener("mousedown", (e) => {
   const { x, y } = getCanvasMousePos(e);
+
+  if (currentTool === "freeArrow") {
+    isDrawingFreeArrow = true;
+    freeArrowStart = { x, y };
+    // Initialize the live tracking of the mouse position
+    currentFreeArrowPos = { x, y };
+    return;
+  }
+
+  // Check if clicking on an arrow handle
+  if (selectedArrow && !selectedArrow.fromId) {  // Only for free arrows
+    // Check start handle
+    if (isPointNearPoint(x, y, selectedArrow.fromX, selectedArrow.fromY)) {
+      isDraggingArrowHandle = true;
+      draggedHandle = 'start';
+      return;
+    }
+    // Check end handle
+    if (isPointNearPoint(x, y, selectedArrow.toX, selectedArrow.toY)) {
+      isDraggingArrowHandle = true;
+      draggedHandle = 'end';
+      return;
+    }
+  }
+
+  // Check for arrow selection first
+  const clickedArrow = findArrowUnderMouse(x, y);
+  if (clickedArrow && currentTool === "select") {
+    selectedArrow = clickedArrow;
+    selectedShape = null;
+    isDraggingArrow = true;
+    dragStartX = x;
+    dragStartY = y;
+    return;
+  }
 
   // Check if user clicked a resize handle...
   if (selectedShape) {
@@ -508,6 +566,19 @@ canvas.addEventListener("mousedown", (e) => {
 canvas.addEventListener("mousemove", (e) => {
   const { x, y } = getCanvasMousePos(e);
 
+  if (isDrawingFreeArrow && freeArrowStart) {
+    // Update the canvas to show the arrow being drawn
+    requestAnimationFrame(() => {
+      animate(); // Redraw everything
+      // Draw the current arrow
+      drawArrow(ctx, freeArrowStart.x, freeArrowStart.y, x, y, {
+        color: arrowColorPicker.value,
+        lineWidth: parseInt(lineThicknessPicker.value) || 2
+      });
+    });
+    return;
+  }
+
   if (isResizing && selectedShape) {
     // We're dragging a handle to resize the selected shape
     resizeShape(selectedShape, resizeHandleIndex, x, y);
@@ -523,6 +594,35 @@ canvas.addEventListener("mousemove", (e) => {
     // Update the "rubber band" end position
     arrowEndPos.x = x;
     arrowEndPos.y = y;
+  }
+
+  if (isDraggingArrow && selectedArrow && selectedArrow.fromId === undefined) {
+    // Only move free arrows (those without fromId)
+    const dx = x - dragStartX;
+    const dy = y - dragStartY;
+    
+    // Update arrow position
+    selectedArrow.fromX += dx;
+    selectedArrow.fromY += dy;
+    selectedArrow.toX += dx;
+    selectedArrow.toY += dy;
+    
+    // Update drag start position
+    dragStartX = x;
+    dragStartY = y;
+    return;
+  }
+
+  if (isDraggingArrowHandle && selectedArrow) {
+    // Update the appropriate endpoint
+    if (draggedHandle === 'start') {
+      selectedArrow.fromX = x;
+      selectedArrow.fromY = y;
+    } else if (draggedHandle === 'end') {
+      selectedArrow.toX = x;
+      selectedArrow.toY = y;
+    }
+    return;
   }
 });
 
@@ -548,6 +648,38 @@ canvas.addEventListener("mouseup", (e) => {
     isDrawingLine = false;
     arrowStartShape = null;
   }
+
+  if (isDrawingFreeArrow && freeArrowStart) {
+    // Complete the free arrow drawing on mouse release
+    const { x, y } = getCanvasMousePos(e);
+    const newArrow = {
+      fromId: undefined, // Free arrow
+      toId: undefined,
+      fromX: freeArrowStart.x,
+      fromY: freeArrowStart.y,
+      toX: x,
+      toY: y,
+      color: arrowColorPicker.value,
+      lineWidth: parseInt(lineThicknessPicker.value) || 2
+    };
+    arrows.push(newArrow);
+    // Clear free arrow drawing state
+    isDrawingFreeArrow = false;
+    freeArrowStart = null;
+    currentFreeArrowPos = null;
+    return;
+  }
+
+  if (isDraggingArrow) {
+    isDraggingArrow = false;
+    return;
+  }
+
+  if (isDraggingArrowHandle) {
+    isDraggingArrowHandle = false;
+    draggedHandle = null;
+    return;
+  }
 });
 
 // Double-click => Edit shape text inline
@@ -566,7 +698,7 @@ canvas.addEventListener("dblclick", (e) => {
     } else {
       // Standard rectangle shape
       shapeEditorInput.style.left = shape.x + "px";
-      shapeEditorInput.style.top = (shape.y + shape.height + 5) + "px";
+      shape.style.top = (shape.y + shape.height + 5) + "px";
     }
 
     // Populate the editor with existing text
@@ -695,23 +827,29 @@ function animate() {
       shape.draw(ctx);
     });
 
-    // Draw existing arrows
+    // Draw all arrows (both connected and free)
     arrows.forEach((arrow) => {
-      const fromShape = shapes.find((s) => s.id === arrow.fromId);
-      const toShape = shapes.find((s) => s.id === arrow.toId);
-      if (fromShape && toShape) {
-        const fromPt = getEdgeIntersection(
-          fromShape,
-          toShape.x + toShape.width / 2,
-          toShape.y + toShape.height / 2
-        );
-        const toPt = getEdgeIntersection(
-          toShape,
-          fromShape.x + fromShape.width / 2,
-          fromShape.y + fromShape.height / 2
-        );
-        drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow);
-      }
+        if (arrow.fromId !== undefined) {
+            // Connected arrow
+            const fromShape = shapes.find((s) => s.id === arrow.fromId);
+            const toShape = shapes.find((s) => s.id === arrow.toId);
+            if (fromShape && toShape) {
+                const fromPt = getEdgeIntersection(
+                    fromShape,
+                    toShape.x + toShape.width / 2,
+                    toShape.y + toShape.height / 2
+                );
+                const toPt = getEdgeIntersection(
+                    toShape,
+                    fromShape.x + fromShape.width / 2,
+                    fromShape.y + fromShape.height / 2
+                );
+                drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow);
+            }
+        } else {
+            // Free arrow
+            drawArrow(ctx, arrow.fromX, arrow.fromY, arrow.toX, arrow.toY, arrow);
+        }
     });
 
     // If currently drawing an arrow, draw the "rubber band" line
@@ -1023,8 +1161,12 @@ document.addEventListener("keydown", (e) => {
       removeShapeById(selectedShape.id);
       selectedShape = null;
     } else if (selectedArrow) {
-      // Remove the arrow from the array
-      arrows = arrows.filter(arrow => arrow !== selectedArrow);
+      // Check if the arrow is a free arrow or attached to shapes
+      if (selectedArrow.fromId !== undefined) {
+        arrows = arrows.filter(arrow => arrow !== selectedArrow);
+      } else {
+        arrows = arrows.filter(arrow => arrow !== selectedArrow);
+      }
       selectedArrow = null;
     }
   }
@@ -1133,7 +1275,11 @@ if (contextDelete) {
             removeShapeById(selectedShape.id);
             selectedShape = null;
         } else if (selectedArrow) {
-            arrows = arrows.filter(arrow => arrow !== selectedArrow);
+            if (selectedArrow.fromId !== undefined) {
+                arrows = arrows.filter(arrow => arrow !== selectedArrow);
+            } else {
+                arrows = arrows.filter(arrow => arrow !== selectedArrow);
+            }
             selectedArrow = null;
         }
         contextMenu.style.display = "none";
@@ -1391,14 +1537,40 @@ loadBtn.addEventListener("click", loadDiagramFromFile);
 function findArrowUnderMouse(x, y) {
   for (let i = arrows.length - 1; i >= 0; i--) {
     const arrow = arrows[i];
-    const fromShape = shapes.find((s) => s.id === arrow.fromId);
-    const toShape = shapes.find((s) => s.id === arrow.toId);
-    if (fromShape && toShape) {
-      const fromPt = fromShape.getCenter(); // Or getEdgeIntersection if more precise
-      const toPt = toShape.getCenter();   // Or getEdgeIntersection
-      if (isPointNearLine(x, y, fromPt.x, fromPt.y, toPt.x, toPt.y, 5)) { // 5px threshold
-        return arrow;
+    
+    // Handle both connected and free arrows
+    let fromX, fromY, toX, toY;
+    
+    if (arrow.fromId !== undefined) {
+      // Connected arrow
+      const fromShape = shapes.find((s) => s.id === arrow.fromId);
+      const toShape = shapes.find((s) => s.id === arrow.toId);
+      if (fromShape && toShape) {
+        const fromPt = getEdgeIntersection(
+          fromShape,
+          toShape.x + toShape.width / 2,
+          toShape.y + toShape.height / 2
+        );
+        const toPt = getEdgeIntersection(
+          toShape,
+          fromShape.x + fromShape.width / 2,
+          fromShape.y + fromShape.height / 2
+        );
+        fromX = fromPt.x;
+        fromY = fromPt.y;
+        toX = toPt.x;
+        toY = toPt.y;
       }
+    } else {
+      // Free arrow
+      fromX = arrow.fromX;
+      fromY = arrow.fromY;
+      toX = arrow.toX;
+      toY = arrow.toY;
+    }
+    
+    if (isPointNearLine(x, y, fromX, fromY, toX, toY, 5)) {
+      return arrow;
     }
   }
   return null;
@@ -1443,26 +1615,56 @@ arrowColorPicker.addEventListener("input", (e) => {
 function drawArrowSelectionHandles(ctx, arrow) {
   if (!arrow) return;
 
-  const fromShape = shapes.find((s) => s.id === arrow.fromId);
-  const toShape = shapes.find((s) => s.id === arrow.toId);
-  if (!fromShape || !toShape) return;
+  let fromX, fromY, toX, toY;
 
-  const fromPt = getEdgeIntersection(
-    fromShape,
-    toShape.x + toShape.width / 2,
-    toShape.y + toShape.height / 2
-  );
-  const toPt = getEdgeIntersection(
-    toShape,
-    fromShape.x + fromShape.width / 2,
-    fromShape.y + fromShape.height / 2
-  );
+  if (arrow.fromId !== undefined) {
+    // Connected arrow
+    const fromShape = shapes.find((s) => s.id === arrow.fromId);
+    const toShape = shapes.find((s) => s.id === arrow.toId);
+    if (!fromShape || !toShape) return;
+
+    const fromPt = getEdgeIntersection(
+      fromShape,
+      toShape.x + toShape.width / 2,
+      toShape.y + toShape.height / 2
+    );
+    const toPt = getEdgeIntersection(
+      toShape,
+      fromShape.x + fromShape.width / 2,
+      fromShape.y + fromShape.height / 2
+    );
+    fromX = fromPt.x;
+    fromY = fromPt.y;
+    toX = toPt.x;
+    toY = toPt.y;
+  } else {
+    // Free arrow
+    fromX = arrow.fromX;
+    fromY = arrow.fromY;
+    toX = arrow.toX;
+    toY = arrow.toY;
+  }
 
   ctx.save();
-  ctx.fillStyle = "blue"; // Different color to distinguish from shape handles
-  // Draw handles at both ends of the arrow
-  ctx.fillRect(fromPt.x - ARROW_HANDLE_SIZE/2, fromPt.y - ARROW_HANDLE_SIZE/2, ARROW_HANDLE_SIZE, ARROW_HANDLE_SIZE);
-  ctx.fillRect(toPt.x   - ARROW_HANDLE_SIZE/2, toPt.y   - ARROW_HANDLE_SIZE/2, ARROW_HANDLE_SIZE, ARROW_HANDLE_SIZE);
+  // Draw larger, more visible handles
+  const handleSize = ARROW_HANDLE_SIZE * 1.5;
+  
+  // Draw start handle (green)
+  ctx.fillStyle = "green";
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(fromX, fromY, handleSize, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  
+  // Draw end handle (red)
+  ctx.fillStyle = "red";
+  ctx.beginPath();
+  ctx.arc(toX, toY, handleSize, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  
   ctx.restore();
 }
 
@@ -1679,5 +1881,12 @@ function updateOpacityControl() {
   } else {
     opacityRange.value = 1; // or another default value if no shape is selected
   }
+}
+
+// Add helper function to check if a point is near another point
+function isPointNearPoint(x1, y1, x2, y2, threshold = 5) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return Math.sqrt(dx * dx + dy * dy) <= threshold;
 }
 
