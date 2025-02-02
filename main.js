@@ -1426,14 +1426,30 @@ function saveDiagram() {
   const exportData = {
     shapeCounter: shapeCounter,
     shapes: shapes.map(shapeToSerializable),
-    arrows: arrows,
-    canvasBgColor: canvasBgColor,
-    arrows: arrows.map(arrow => ({
-      fromId: arrow.fromId,
-      toId: arrow.toId,
-      color: arrow.color,
-      lineWidth: arrow.lineWidth
-    }))
+    arrows: arrows.map(arrow => {
+      // For free arrows (not connected to any shape), include coordinates.
+      if (arrow.fromId === undefined) {
+        return {
+          fromId: undefined,
+          toId: undefined,
+          fromX: arrow.fromX,
+          fromY: arrow.fromY,
+          toX: arrow.toX,
+          toY: arrow.toY,
+          color: arrow.color,
+          lineWidth: arrow.lineWidth
+        };
+      } else {
+        // For connected arrows
+        return {
+          fromId: arrow.fromId,
+          toId: arrow.toId,
+          color: arrow.color,
+          lineWidth: arrow.lineWidth
+        };
+      }
+    }),
+    canvasBgColor: canvasBgColor
   };
 
   const dataStr =
@@ -1484,18 +1500,34 @@ function importDiagram(jsonText) {
     const newShapes = importData.shapes.map(shapeFromSerializable);
     shapes.push(...newShapes);
 
-    // Now compute the largest used shape ID so we can set shapeCounter
-    // higher than that (so new shapes get unique IDs).
+    // Compute the largest used shape ID so we can set shapeCounter accordingly.
     const maxId = newShapes.reduce((acc, s) => Math.max(acc, s.id), 0);
     shapeCounter = Math.max(importData.shapeCounter, maxId + 1);
 
-    // Restore arrows
-    arrows = (importData.arrows || []).map(arrowData => ({
-      fromId: arrowData.fromId,
-      toId: arrowData.toId,
-      color: arrowData.color,
-      lineWidth: arrowData.lineWidth
-    }));
+    // Restore arrows, handling free arrows explicitly.
+    arrows = (importData.arrows || []).map(arrowData => {
+      if (arrowData.fromId === undefined) {
+        // Free arrow: include coordinate information.
+        return {
+          fromId: undefined,
+          toId: undefined,
+          fromX: arrowData.fromX,
+          fromY: arrowData.fromY,
+          toX: arrowData.toX,
+          toY: arrowData.toY,
+          color: arrowData.color,
+          lineWidth: arrowData.lineWidth
+        };
+      } else {
+        // Connected arrow
+        return {
+          fromId: arrowData.fromId,
+          toId: arrowData.toId,
+          color: arrowData.color,
+          lineWidth: arrowData.lineWidth
+        };
+      }
+    });
 
     // Optionally, reset the selected shape
     selectedShape = null;
