@@ -1541,9 +1541,10 @@ function saveDiagram() {
     shapeCounter: shapeCounter,
     shapes: shapes.map(shapeToSerializable),
     arrows: arrows.map(arrow => {
-      // For free arrows (not connected to any shape), include coordinates.
+      let arrowData = {};
       if (arrow.fromId === undefined) {
-        return {
+        // Free arrow: include coordinates
+        arrowData = {
           fromId: undefined,
           toId: undefined,
           fromX: arrow.fromX,
@@ -1551,17 +1552,28 @@ function saveDiagram() {
           toX: arrow.toX,
           toY: arrow.toY,
           color: arrow.color,
-          lineWidth: arrow.lineWidth
+          lineWidth: arrow.lineWidth,
         };
       } else {
-        // For connected arrows
-        return {
+        // Connected arrow
+        arrowData = {
           fromId: arrow.fromId,
           toId: arrow.toId,
           color: arrow.color,
-          lineWidth: arrow.lineWidth
+          lineWidth: arrow.lineWidth,
         };
       }
+      // Save optional properties if they exist.
+      if (arrow.waypoints) {
+        arrowData.waypoints = arrow.waypoints;
+      }
+      if (arrow.startAttachment) {
+        arrowData.startAttachment = arrow.startAttachment;
+      }
+      if (arrow.endAttachment) {
+        arrowData.endAttachment = arrow.endAttachment;
+      }
+      return arrowData;
     }),
     canvasBgColor: canvasBgColor
   };
@@ -1610,7 +1622,7 @@ async function importDiagram(jsonText) {
     shapes = [];
     arrows = [];
 
-    // Use Promise.all to wait for all shapes (including asynchronous animated GIFs) to be fully restored.
+    // Import shapes (rest of your code stays the same)
     const shapePromises = importData.shapes.map(sdata => {
       if (sdata.type === "AnimatedGifShape") {
         return createAnimatedGifShape(sdata);
@@ -1621,11 +1633,11 @@ async function importDiagram(jsonText) {
     const newShapes = await Promise.all(shapePromises);
     shapes.push(...newShapes);
 
-    // Compute the largest used shape ID so we can set shapeCounter accordingly.
+    // Compute the largest used shape ID.
     const maxId = newShapes.reduce((acc, s) => Math.max(acc, s.id), 0);
     shapeCounter = Math.max(importData.shapeCounter, maxId + 1);
 
-    // Restore arrows, handling free arrows explicitly.
+    // Restore arrows, including free arrows and connected arrows with optional properties:
     arrows = (importData.arrows || []).map(arrowData => {
       if (arrowData.fromId === undefined) {
         // Free arrow: include coordinate information.
@@ -1637,7 +1649,8 @@ async function importDiagram(jsonText) {
           toX: arrowData.toX,
           toY: arrowData.toY,
           color: arrowData.color,
-          lineWidth: arrowData.lineWidth
+          lineWidth: arrowData.lineWidth,
+          waypoints: arrowData.waypoints, // may be undefined
         };
       } else {
         // Connected arrow
@@ -1645,7 +1658,10 @@ async function importDiagram(jsonText) {
           fromId: arrowData.fromId,
           toId: arrowData.toId,
           color: arrowData.color,
-          lineWidth: arrowData.lineWidth
+          lineWidth: arrowData.lineWidth,
+          waypoints: arrowData.waypoints,          // may be undefined
+          startAttachment: arrowData.startAttachment,  // may be undefined
+          endAttachment: arrowData.endAttachment,      // may be undefined
         };
       }
     });
