@@ -1422,22 +1422,14 @@ function shapeFromSerializable(sdata) {
   if (sdata.type === "AnimatedGifShape") {
     if (sdata.gifSrc) {
       // Create an image element using the saved GIF source.
-      // For a complete solution you'd want to decode the GIF using gifuct-js,
-      // but as a fallback you can create an AnimatedGifShape that displays the GIF.
       const img = new Image();
       img.src = sdata.gifSrc;
-
-      // Create a new AnimatedGifShape.
-      // Note: Since decoding the actual frames is asynchronous, you may
-      //   need to update this section to properly use gifuct-js.
       newShape = new AnimatedGifShape(sdata.x, sdata.y, [], sdata.speedMultiplier);
       newShape.gifSrc = sdata.gifSrc;
       newShape.img = img;
       newShape.width = sdata.width;
       newShape.height = sdata.height;
-      newShape.isAnimated = true;
     } else {
-      // Fallback if for some reason no gifSrc was stored.
       newShape = new Shape(sdata.x, sdata.y, sdata.width, sdata.height, "");
     }
   } else if (sdata.type === "ImageShape") {
@@ -1452,13 +1444,16 @@ function shapeFromSerializable(sdata) {
     newShape.fontFamily = sdata.fontFamily || "Arial";
   }
 
-  // Restore properties
+  // Restore common properties
   newShape.color = sdata.color || "#333";
   newShape.textColor = sdata.textColor || "#000";
   newShape.fillColor = sdata.fillColor || "#e8f1fa";
   newShape.lineWidth = sdata.lineWidth || 2;
   newShape.id = sdata.id;
   newShape.opacity = sdata.opacity !== undefined ? sdata.opacity : 1;
+  // Restore animated border state
+  newShape.isAnimated = sdata.isAnimated !== undefined ? sdata.isAnimated : false;
+  
   return newShape;
 }
 
