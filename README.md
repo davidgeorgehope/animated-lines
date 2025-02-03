@@ -6,11 +6,14 @@ At the moment the lines are really annoying, they can't be deleted, they can't b
 
 Cut/Paste? 
 
-Be nice to be able to set transparency for the colors. 
-
-The opacity thing doesn't seem to really maintain state between object selections. Bit random.
-
 Other Shapes?
 
 Other line types? Bendy lines etc.
 
+Arrow head thickness is a bit weird. 
+
+ROTATE
+
+Undo, redo?
+
+Remove White->Remove whatever color i set using the pipette.
