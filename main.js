@@ -79,7 +79,8 @@ let isDraggingArrow = false;
 let dragStartX = 0;
 let dragStartY = 0;
 let selectedWaypointIndex = -1;
-
+let isDraggingWaypoint = false;
+let isDraggingEndpoint = false;
 
 // --- ADD: Variables to track selection and resizing state ---
 let selectedShape = null;        // which shape (if any) is selected
@@ -637,19 +638,27 @@ canvas.addEventListener("mousemove", (e) => {
 
 // Mouseup
 canvas.addEventListener("mouseup", (e) => {
-  // Get mouse position from the event
-  const { x, y } = getCanvasMousePos(e);
-
+  // Reset any dragging flags related to arrow manipulation.
+  if (isDraggingWaypoint || isDraggingEndpoint) {
+    isDraggingWaypoint = false;
+    isDraggingEndpoint = false;
+    selectedWaypointIndex = -1;
+    draggedHandle = null;
+    return;  // Exit, so no further arrow drag logic applies.
+  }
+  
+  // Reset shape-resizing and dragging states
   if (isResizing) {
     isResizing = false;
     resizeHandleIndex = -1;
   }
-
   if (draggingShape) {
     draggingShape = null;
   }
-
+  
+  // Handle arrow-line complete drawing
   if (isDrawingLine) {
+    const { x, y } = getCanvasMousePos(e);
     const releasedShape = findShapeUnderMouse(x, y);
     if (releasedShape && releasedShape !== arrowStartShape) {
       arrows.push({ fromId: arrowStartShape.id, toId: releasedShape.id });
@@ -657,12 +666,12 @@ canvas.addEventListener("mouseup", (e) => {
     isDrawingLine = false;
     arrowStartShape = null;
   }
-
+  
+  // Handle free arrow drawing completion
   if (isDrawingFreeArrow && freeArrowStart) {
-    // Complete the free arrow drawing on mouse release
     const { x, y } = getCanvasMousePos(e);
     const newArrow = {
-      fromId: undefined, // Free arrow
+      fromId: undefined,
       toId: undefined,
       fromX: freeArrowStart.x,
       fromY: freeArrowStart.y,
@@ -672,21 +681,23 @@ canvas.addEventListener("mouseup", (e) => {
       lineWidth: parseInt(lineThicknessPicker.value) || 2
     };
     arrows.push(newArrow);
-    // Clear free arrow drawing state
     isDrawingFreeArrow = false;
     freeArrowStart = null;
     currentFreeArrowPos = null;
     return;
   }
-
-  if (isDraggingArrow) {
-    isDraggingArrow = false;
-    return;
-  }
-
+  
+  // Clear arrow handle dragging state
   if (isDraggingArrowHandle) {
     isDraggingArrowHandle = false;
     draggedHandle = null;
+  }
+  
+  // Clear waypoint dragging state
+  selectedWaypointIndex = -1;
+  
+  if (isDraggingArrow) {
+    isDraggingArrow = false;
     return;
   }
 });
@@ -856,25 +867,35 @@ function animate() {
     // Draw arrows (both connected and free)
     arrows.forEach((arrow) => {
         if (arrow.fromId !== undefined) {
-            // Connected arrow
+            // Connected arrow: adjust endpoints if a waypoint exists.
             const fromShape = shapes.find((s) => s.id === arrow.fromId);
             const toShape = shapes.find((s) => s.id === arrow.toId);
             if (fromShape && toShape) {
-                const fromPt = getEdgeIntersection(
-                    fromShape,
-                    toShape.x + toShape.width / 2,
-                    toShape.y + toShape.height / 2
-                );
-                const toPt = getEdgeIntersection(
-                    toShape,
-                    fromShape.x + fromShape.width / 2,
-                    fromShape.y + fromShape.height / 2
-                );
+                // Set default target points as the centers of the opposite shapes.
+                let startTargetX = toShape.x + toShape.width / 2;
+                let startTargetY = toShape.y + toShape.height / 2;
+                let endTargetX = fromShape.x + fromShape.width / 2;
+                let endTargetY = fromShape.y + fromShape.height / 2;
+                
+                // If the arrow has waypoints, use the first waypoint for the source and 
+                // the last waypoint for the target.
+                if (arrow.waypoints && arrow.waypoints.length > 0) {
+                    startTargetX = arrow.waypoints[0].x;
+                    startTargetY = arrow.waypoints[0].y;
+                    endTargetX = arrow.waypoints[arrow.waypoints.length - 1].x;
+                    endTargetY = arrow.waypoints[arrow.waypoints.length - 1].y;
+                }
+                
+                // Compute the intersection between the source shape and the direction
+                // toward its target (first waypoint or center of the target), and similarly for the target shape.
+                const fromPt = getEdgeIntersection(fromShape, startTargetX, startTargetY);
+                const toPt = getEdgeIntersection(toShape, endTargetX, endTargetY);
+                
                 drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow);
             }
         } else {
-            // Free arrow
-            drawArrow(ctx, arrow.fromX, arrow.fromY, arrow.toX, arrow.toY, arrow);
+          // Free arrow
+          drawArrow(ctx, arrow.fromX, arrow.fromY, arrow.toX, arrow.toY, arrow);
         }
     });
 
