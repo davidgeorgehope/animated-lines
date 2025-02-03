@@ -133,6 +133,7 @@ let animatedBorderShape = null;
 // AnimatedGifShape: A class to handle animated GIF frames decoded via gifuct-js
 class AnimatedGifShape {
   constructor(x, y, frames, speedMultiplier = 1) {
+    this.id = shapeCounter++;
     this.x = x;
     this.y = y;
     this.frames = frames;
