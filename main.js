@@ -100,6 +100,8 @@ const contextMenu = document.getElementById("context-menu");
 // Hide the menu on any left-click
 document.addEventListener("click", () => {
   contextMenu.style.display = "none";
+  hoveredArrow = null;
+  canvas.style.cursor = "default";
 });
 
 // Right-click on the canvas
@@ -456,31 +458,43 @@ let draggedHandle = null;           // 'start' or 'end' to identify which endpoi
 canvas.addEventListener("mousedown", (e) => {
   const { x, y } = getCanvasMousePos(e);
 
+  // *** New: If a waypoint is clicked on, start dragging that waypoint and exit immediately ***
+  if (selectedArrow && selectedArrow.waypoints) {
+    for (let i = 0; i < selectedArrow.waypoints.length; i++) {
+      const point = selectedArrow.waypoints[i];
+      if (isPointNearPoint(x, y, point.x, point.y, ARROW_HANDLE_SIZE)) {
+        selectedWaypointIndex = i;
+        // Prevent any further arrow-dragging logic for this event.
+        return;
+      }
+    }
+  }
+
+  // *** Existing mousedown logic begins here ***
+
+  // If we're in free arrow drawing mode
   if (currentTool === "freeArrow") {
     isDrawingFreeArrow = true;
     freeArrowStart = { x, y };
-    // Initialize the live tracking of the mouse position
     currentFreeArrowPos = { x, y };
     return;
   }
 
-  // Check if clicking on an arrow handle
-  if (selectedArrow && !selectedArrow.fromId) {  // Only for free arrows
-    // Check start handle
-    if (isPointNearPoint(x, y, selectedArrow.fromX, selectedArrow.fromY)) {
+  // Check if clicking on an arrow handle (for free arrows)
+  if (selectedArrow && selectedArrow.fromId === undefined) {
+    if (isPointNearPoint(x, y, selectedArrow.fromX, selectedArrow.fromY, ARROW_HANDLE_SIZE)) {
       isDraggingArrowHandle = true;
       draggedHandle = 'start';
       return;
     }
-    // Check end handle
-    if (isPointNearPoint(x, y, selectedArrow.toX, selectedArrow.toY)) {
+    if (isPointNearPoint(x, y, selectedArrow.toX, selectedArrow.toY, ARROW_HANDLE_SIZE)) {
       isDraggingArrowHandle = true;
       draggedHandle = 'end';
       return;
     }
   }
-
-  // Check for arrow selection first
+  
+  // (Additional arrow selection or shape selection logic here.)
   const clickedArrow = findArrowUnderMouse(x, y);
   if (clickedArrow && currentTool === "select") {
     selectedArrow = clickedArrow;
@@ -627,7 +641,7 @@ canvas.addEventListener("mousemove", (e) => {
   }
 
   // Add hover detection
-  if (!draggingShape && !isDrawingLine && !isDraggingArrow && !selectedWaypointIndex) {
+  if (!draggingShape && !isDrawingLine && !isDraggingArrow && selectedWaypointIndex === -1) {
       const arrow = findArrowUnderMouse(x, y);
       if (arrow !== hoveredArrow) {
           hoveredArrow = arrow;
@@ -940,7 +954,7 @@ function animate() {
 function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
     ctx.save();
     
-    // Make the line thicker if it's hovered or selected
+    // Adjust line thickness for hovered or selected arrows
     if (arrowObj === hoveredArrow || arrowObj === selectedArrow) {
         ctx.lineWidth = (arrowObj.lineWidth || 2) + 2;
     } else {
@@ -951,14 +965,15 @@ function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
     ctx.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
     ctx.strokeStyle = arrowObj.color || "#000";
 
-    // If hovered but not selected, add a highlight effect
+    // This block draws the yellow highlight for hovered arrows.
+    // Remove or comment it out if you do not want the highlight.
+    /*
     if (arrowObj === hoveredArrow && arrowObj !== selectedArrow) {
-        // Draw a wider, semi-transparent line behind the main line
         ctx.save();
         ctx.strokeStyle = "rgba(255, 255, 0, 0.3)";
         ctx.lineWidth = ctx.lineWidth + 4;
-        ctx.setLineDash([]); // Solid line for the highlight
-        
+        ctx.setLineDash([]);
+    
         ctx.beginPath();
         ctx.moveTo(fromX, fromY);
         if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
@@ -970,8 +985,9 @@ function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
         ctx.stroke();
         ctx.restore();
     }
+    */
 
-    // Draw the main line
+    // Draw the main arrow line
     ctx.beginPath();
     ctx.moveTo(fromX, fromY);
     if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
@@ -991,7 +1007,7 @@ function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
         : fromY;
     drawArrowhead(ctx, finalFromX, finalFromY, toX, toY, arrowObj.color);
 
-    // Draw waypoint handles when selected
+    // Draw waypoint handles if the arrow is selected
     if (selectedArrow === arrowObj) {
         drawWaypointHandles(ctx, arrowObj);
     }
