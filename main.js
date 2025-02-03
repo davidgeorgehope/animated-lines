@@ -1010,14 +1010,12 @@ canvas.addEventListener("drop", (e) => {
     return;
   }
 
-  const fileReader = new FileReader();
-
-  // Check if the file is a GIF
   if (file.type === "image/gif") {
-    fileReader.onload = (evt) => {
+    // Create a FileReader for the ArrayBuffer needed for decoding
+    const fileReaderArrayBuffer = new FileReader();
+    fileReaderArrayBuffer.onload = (evt) => {
       const buffer = evt.target.result;
       try {
-        // Use whichever global is available
         const lib = (typeof window.gifuct !== "undefined" ? window.gifuct : (typeof gifuct !== "undefined" ? gifuct : null));
         if (!lib) {
           console.error("gifuct library is not loaded.");
@@ -1025,16 +1023,25 @@ canvas.addEventListener("drop", (e) => {
         }
         const gifData = lib.parseGIF(buffer);
         const frames = lib.decompressFrames(gifData, true);
-        // Create an AnimatedGifShape from the decoded frames
-        const animatedGifShape = new AnimatedGifShape(dropX, dropY, frames, 1);
-        shapes.push(animatedGifShape);
+
+        // Now create a second FileReader to get the data URL to store as gifSrc
+        const fileReaderDataURL = new FileReader();
+        fileReaderDataURL.onload = (evt) => {
+          const dataUrl = evt.target.result;
+          const animatedGifShape = new AnimatedGifShape(dropX, dropY, frames, 1);
+          // IMPORTANT: assign gifSrc so that your export logic can save it.
+          animatedGifShape.gifSrc = dataUrl;
+          shapes.push(animatedGifShape);
+        };
+        fileReaderDataURL.readAsDataURL(file);
       } catch (error) {
         console.error("Error decoding animated GIF:", error);
       }
     };
-    fileReader.readAsArrayBuffer(file);
+    fileReaderArrayBuffer.readAsArrayBuffer(file);
   } else {
-    // Regular (non-GIF) image processing
+    // Processing for regular (non-GIF) images remains unchanged
+    const fileReader = new FileReader();
     fileReader.onload = (evt) => {
       const img = new Image();
       img.onload = () => {
@@ -1341,8 +1348,20 @@ fontFamilySelect.addEventListener("change", () => {
 
 // 1) Convert in-memory shape objects to a simpler "serializable" form
 function shapeToSerializable(shape) {
-  // Notice we add "id" to the exported data
-  if (shape instanceof ImageShape) {
+  if (shape instanceof AnimatedGifShape) {
+    return {
+      id: shape.id,
+      type: "AnimatedGifShape",
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      // Make sure gifSrc has a valid value (data URL or external URL)
+      gifSrc: shape.gifSrc || "",
+      speedMultiplier: shape.speedMultiplier,
+      opacity: shape.opacity !== undefined ? shape.opacity : 1
+    };
+  } else if (shape instanceof ImageShape) {
     return {
       id: shape.id,
       type: "ImageShape",
@@ -1399,7 +1418,28 @@ function shapeToSerializable(shape) {
 function shapeFromSerializable(sdata) {
   let newShape;
 
-  if (sdata.type === "ImageShape") {
+  if (sdata.type === "AnimatedGifShape") {
+    if (sdata.gifSrc) {
+      // Create an image element using the saved GIF source.
+      // For a complete solution you'd want to decode the GIF using gifuct-js,
+      // but as a fallback you can create an AnimatedGifShape that displays the GIF.
+      const img = new Image();
+      img.src = sdata.gifSrc;
+
+      // Create a new AnimatedGifShape.
+      // Note: Since decoding the actual frames is asynchronous, you may
+      //   need to update this section to properly use gifuct-js.
+      newShape = new AnimatedGifShape(sdata.x, sdata.y, [], sdata.speedMultiplier);
+      newShape.gifSrc = sdata.gifSrc;
+      newShape.img = img;
+      newShape.width = sdata.width;
+      newShape.height = sdata.height;
+      newShape.isAnimated = true;
+    } else {
+      // Fallback if for some reason no gifSrc was stored.
+      newShape = new Shape(sdata.x, sdata.y, sdata.width, sdata.height, "");
+    }
+  } else if (sdata.type === "ImageShape") {
     const img = new Image();
     img.src = sdata.imgSrc;
     newShape = new ImageShape(sdata.x, sdata.y, sdata.width, sdata.height, img);
@@ -1410,12 +1450,12 @@ function shapeFromSerializable(sdata) {
     newShape.fontSize = sdata.fontSize || 14;
     newShape.fontFamily = sdata.fontFamily || "Arial";
   }
-  // Restore other properties
+
+  // Restore properties
   newShape.color = sdata.color || "#333";
   newShape.textColor = sdata.textColor || "#000";
   newShape.fillColor = sdata.fillColor || "#e8f1fa";
   newShape.lineWidth = sdata.lineWidth || 2;
-  newShape.isAnimated = sdata.isAnimated || false;
   newShape.id = sdata.id;
   newShape.opacity = sdata.opacity !== undefined ? sdata.opacity : 1;
   return newShape;
@@ -1488,7 +1528,7 @@ function loadDiagramFromFile() {
 }
 
 // 5) Import the diagram data from a JSON string
-function importDiagram(jsonText) {
+async function importDiagram(jsonText) {
   try {
     const importData = JSON.parse(jsonText);
 
@@ -1496,8 +1536,15 @@ function importDiagram(jsonText) {
     shapes = [];
     arrows = [];
 
-    // Recreate shapes
-    const newShapes = importData.shapes.map(shapeFromSerializable);
+    // Use Promise.all to wait for all shapes (including asynchronous animated GIFs) to be fully restored.
+    const shapePromises = importData.shapes.map(sdata => {
+      if (sdata.type === "AnimatedGifShape") {
+        return createAnimatedGifShape(sdata);
+      } else {
+        return Promise.resolve(shapeFromSerializable(sdata));
+      }
+    });
+    const newShapes = await Promise.all(shapePromises);
     shapes.push(...newShapes);
 
     // Compute the largest used shape ID so we can set shapeCounter accordingly.
@@ -1529,17 +1576,14 @@ function importDiagram(jsonText) {
       }
     });
 
-    // Optionally, reset the selected shape
     selectedShape = null;
 
-    // Restore canvasBgColor
+    // Restore canvas background color
     canvasBgColor = importData.canvasBgColor || "#ffffff";
-    // Update canvas background color picker value
     const canvasColorPicker = document.getElementById("canvasColorPicker");
     if (canvasColorPicker) {
       canvasColorPicker.value = canvasBgColor;
     }
-
     console.log("Diagram loaded successfully!");
   } catch (error) {
     console.error("Error parsing diagram JSON:", error);
@@ -1918,5 +1962,28 @@ function isPointNearPoint(x1, y1, x2, y2, threshold = 5) {
   const dx = x2 - x1;
   const dy = y2 - y1;
   return Math.sqrt(dx * dx + dy * dy) <= threshold;
+}
+
+// Add an asynchronous helper function for creating an AnimatedGifShape from saved data.
+async function createAnimatedGifShape(sdata) {
+  // Use fetch to get the ArrayBuffer from the saved data URL.
+  const response = await fetch(sdata.gifSrc);
+  const buffer = await response.arrayBuffer();
+  
+  // Assume the gifuct library is available globally.
+  const gifData = window.gifuct.parseGIF(buffer);
+  const frames = window.gifuct.decompressFrames(gifData, true);
+  
+  // Create and initialize your AnimatedGifShape with proper frames.
+  const animatedShape = new AnimatedGifShape(sdata.x, sdata.y, frames, sdata.speedMultiplier);
+  animatedShape.id = sdata.id;
+  animatedShape.color = sdata.color || "#333";
+  animatedShape.textColor = sdata.textColor || "#000";
+  animatedShape.fillColor = sdata.fillColor || "#e8f1fa";
+  animatedShape.lineWidth = sdata.lineWidth || 2;
+  animatedShape.opacity = sdata.opacity !== undefined ? sdata.opacity : 1;
+  animatedShape.gifSrc = sdata.gifSrc;
+  
+  return animatedShape;
 }
 
