@@ -71,10 +71,15 @@ let isDrawingLine = false;
 let arrowStartShape = null; 
 let arrowEndPos = { x: 0, y: 0 };
 
+// --- ADD: Variable for arrow hover state ---
+let hoveredArrow = null;
+
 // --- ADD: Variables for arrow dragging ---
 let isDraggingArrow = false;
 let dragStartX = 0;
 let dragStartY = 0;
+let selectedWaypointIndex = -1;
+
 
 // --- ADD: Variables to track selection and resizing state ---
 let selectedShape = null;        // which shape (if any) is selected
@@ -84,7 +89,9 @@ const HANDLE_SIZE = 8;           // size of each resize handle
 
 // --- ADD: Arrow selection variables ---
 let selectedArrow = null;        // which arrow (if any) is selected
-const ARROW_HANDLE_SIZE = 6;     // slightly smaller than shape handles
+// ----- Adjust arrow handle size and hit thresholds -----
+// Increase ARROW_HANDLE_SIZE to make waypoint handles larger and easier to hit.
+const ARROW_HANDLE_SIZE = 10; // Previously 6
 
 // Reference the context menu div
 const contextMenu = document.getElementById("context-menu");
@@ -617,6 +624,15 @@ canvas.addEventListener("mousemove", (e) => {
     }
     return;
   }
+
+  // Add hover detection
+  if (!draggingShape && !isDrawingLine && !isDraggingArrow && !selectedWaypointIndex) {
+      const arrow = findArrowUnderMouse(x, y);
+      if (arrow !== hoveredArrow) {
+          hoveredArrow = arrow;
+          canvas.style.cursor = arrow ? 'pointer' : 'default';
+      }
+  }
 });
 
 // Mouseup
@@ -675,43 +691,60 @@ canvas.addEventListener("mouseup", (e) => {
   }
 });
 
-// Double-click => Edit shape text inline
+// Replace existing dblclick handlers with this merged version:
 canvas.addEventListener("dblclick", (e) => {
-  const { x, y } = getCanvasMousePos(e);
-  const shape = findShapeUnderMouse(x, y);
-  if (shape) {
-    shapeEditorInput.style.display = "block";
-
-    if (shape instanceof TextShape) {
-      // Position the editor near the text
-      // For a TextShape, y is the baseline of the text, so shift upward by shape.height
-      // to place the editor above or at the text area
-      shapeEditorInput.style.left = shape.x + "px";
-      shapeEditorInput.style.top = (shape.y - shape.height - 5) + "px";
-    } else {
-      // Standard rectangle shape
-      shapeEditorInput.style.left = shape.x + "px";
-      shape.style.top = (shape.y + shape.height + 5) + "px";
+    const { x, y } = getCanvasMousePos(e);
+    
+    // First, see if a shape was double-clicked:
+    const shape = findShapeUnderMouse(x, y);
+    if (shape) {
+        // Show the inline editor for this shape
+        shapeEditorInput.style.display = "block";
+        if (shape instanceof TextShape) {
+            // For a TextShape, position above the text
+            shapeEditorInput.style.left = shape.x + "px";
+            shapeEditorInput.style.top = (shape.y - shape.height - 5) + "px";
+        } else {
+            shapeEditorInput.style.left = shape.x + "px";
+            shapeEditorInput.style.top = (shape.y + shape.height + 5) + "px";
+        }
+        shapeEditorInput.value = shape.text;
+        shapeEditorInput.focus();
+        shapeEditorInput.onkeydown = (evt) => {
+            if (evt.key === "Enter") {
+                updateShapeText(shape, shapeEditorInput.value);
+                clearEditor();
+            }
+        };
+        shapeEditorInput.onblur = () => {
+            updateShapeText(shape, shapeEditorInput.value);
+            clearEditor();
+        };
+    } else if (selectedArrow) {
+        // No shape was clicked, but an arrow is selected:
+        // Loop through all segments in the arrow (including waypoints)
+        const segments = getArrowSegments(selectedArrow);
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            // Check using an improved threshold
+            if (isPointNearLine(x, y, seg.x1, seg.y1, seg.x2, seg.y2, 15)) {
+                // Ensure waypoint array exists
+                if (!selectedArrow.waypoints) {
+                    selectedArrow.waypoints = [];
+                }
+                const newPoint = { x, y };
+                // Insert new waypoint: if near first segment, add at beginning, if near last add to end
+                if (i === 0) {
+                    selectedArrow.waypoints.unshift(newPoint);
+                } else if (i === segments.length - 1) {
+                    selectedArrow.waypoints.push(newPoint);
+                } else {
+                    selectedArrow.waypoints.splice(i, 0, newPoint);
+                }
+                break;
+            }
+        }
     }
-
-    // Populate the editor with existing text
-    shapeEditorInput.value = shape.text;
-    shapeEditorInput.focus();
-
-    // When user finishes editing via ENTER
-    shapeEditorInput.onkeydown = (evt) => {
-      if (evt.key === "Enter") {
-        updateShapeText(shape, shapeEditorInput.value);
-        clearEditor();
-      }
-    };
-
-    // When user clicks away
-    shapeEditorInput.onblur = () => {
-      updateShapeText(shape, shapeEditorInput.value);
-      clearEditor();
-    };
-  }
 });
 
 // Hide and reset the inline editor
@@ -884,20 +917,65 @@ function animate() {
 
 // Draw a dotted arrow for a final connection
 function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
-  ctx.save();
-  ctx.setLineDash([6, 4]);
-  // Use exportDashOffset when exporting; otherwise, use the negative of dashOffset
-  ctx.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
-  ctx.strokeStyle = arrowObj.color || "#000";
-  ctx.lineWidth = arrowObj.lineWidth || 2;
+    ctx.save();
+    
+    // Make the line thicker if it's hovered or selected
+    if (arrowObj === hoveredArrow || arrowObj === selectedArrow) {
+        ctx.lineWidth = (arrowObj.lineWidth || 2) + 2;
+    } else {
+        ctx.lineWidth = arrowObj.lineWidth || 2;
+    }
+    
+    ctx.setLineDash([6, 4]);
+    ctx.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
+    ctx.strokeStyle = arrowObj.color || "#000";
 
-  ctx.beginPath();
-  ctx.moveTo(fromX, fromY);
-  ctx.lineTo(toX, toY);
-  ctx.stroke();
+    // If hovered but not selected, add a highlight effect
+    if (arrowObj === hoveredArrow && arrowObj !== selectedArrow) {
+        // Draw a wider, semi-transparent line behind the main line
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 255, 0, 0.3)";
+        ctx.lineWidth = ctx.lineWidth + 4;
+        ctx.setLineDash([]); // Solid line for the highlight
+        
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
+            arrowObj.waypoints.forEach(point => {
+                ctx.lineTo(point.x, point.y);
+            });
+        }
+        ctx.lineTo(toX, toY);
+        ctx.stroke();
+        ctx.restore();
+    }
 
-  drawArrowhead(ctx, fromX, fromY, toX, toY, arrowObj.color);
-  ctx.restore();
+    // Draw the main line
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
+        arrowObj.waypoints.forEach(point => {
+            ctx.lineTo(point.x, point.y);
+        });
+    }
+    ctx.lineTo(toX, toY);
+    ctx.stroke();
+
+    // Draw the arrowhead
+    let finalFromX = arrowObj.waypoints && arrowObj.waypoints.length > 0 
+        ? arrowObj.waypoints[arrowObj.waypoints.length - 1].x 
+        : fromX;
+    let finalFromY = arrowObj.waypoints && arrowObj.waypoints.length > 0 
+        ? arrowObj.waypoints[arrowObj.waypoints.length - 1].y 
+        : fromY;
+    drawArrowhead(ctx, finalFromX, finalFromY, toX, toY, arrowObj.color);
+
+    // Draw waypoint handles when selected
+    if (selectedArrow === arrowObj) {
+        drawWaypointHandles(ctx, arrowObj);
+    }
+    
+    ctx.restore();
 }
 
 // Draw a temporary dashed line (no arrowhead)
@@ -1604,52 +1682,90 @@ loadBtn.addEventListener("click", loadDiagramFromFile);
 // ---------------------------------------------------------------------- 
 
 // --- ADD: Function to find arrow under mouse ---
-function findArrowUnderMouse(x, y) {
-  for (let i = arrows.length - 1; i >= 0; i--) {
-    const arrow = arrows[i];
-    
-    // Handle both connected and free arrows
-    let fromX, fromY, toX, toY;
-    
+// ----- Revised function to compute arrow segments -----
+// This works for both connected arrows and free arrows (with or without waypoints).
+function getArrowSegments(arrow) {
+    const segments = [];
+    let startX, startY, endX, endY;
     if (arrow.fromId !== undefined) {
-      // Connected arrow
-      const fromShape = shapes.find((s) => s.id === arrow.fromId);
-      const toShape = shapes.find((s) => s.id === arrow.toId);
-      if (fromShape && toShape) {
-        const fromPt = getEdgeIntersection(
-          fromShape,
-          toShape.x + toShape.width / 2,
-          toShape.y + toShape.height / 2
-        );
-        const toPt = getEdgeIntersection(
-          toShape,
-          fromShape.x + fromShape.width / 2,
-          fromShape.y + fromShape.height / 2
-        );
-        fromX = fromPt.x;
-        fromY = fromPt.y;
-        toX = toPt.x;
-        toY = toPt.y;
-      }
+         // Connected arrow: compute endpoints using shapes
+         const fromShape = shapes.find(s => s.id === arrow.fromId);
+         const toShape = shapes.find(s => s.id === arrow.toId);
+         if (!fromShape || !toShape) return segments;
+         const fromPt = getEdgeIntersection(fromShape, toShape.getCenter().x, toShape.getCenter().y);
+         const toPt = getEdgeIntersection(toShape, fromShape.getCenter().x, fromShape.getCenter().y);
+         startX = fromPt.x;
+         startY = fromPt.y;
+         endX = toPt.x;
+         endY = toPt.y;
     } else {
-      // Free arrow
-      fromX = arrow.fromX;
-      fromY = arrow.fromY;
-      toX = arrow.toX;
-      toY = arrow.toY;
+         // Free arrow: use stored coordinates directly.
+         startX = arrow.fromX;
+         startY = arrow.fromY;
+         endX = arrow.toX;
+         endY = arrow.toY;
     }
-    
-    if (isPointNearLine(x, y, fromX, fromY, toX, toY, 5)) {
-      return arrow;
+    let prevX = startX, prevY = startY;
+    if (arrow.waypoints && arrow.waypoints.length > 0) {
+         arrow.waypoints.forEach(point => {
+             segments.push({ x1: prevX, y1: prevY, x2: point.x, y2: point.y });
+             prevX = point.x;
+             prevY = point.y;
+         });
     }
-  }
-  return null;
+    segments.push({ x1: prevX, y1: prevY, x2: endX, y2: endY });
+    return segments;
+}
+
+// ----- Revised hit detection for arrows -----
+// Instead of checking only the (computed) endpoints, we iterate through every segment.
+function findArrowUnderMouse(x, y) {
+    for (let i = arrows.length - 1; i >= 0; i--) {
+        const arrow = arrows[i];
+        const segments = getArrowSegments(arrow);
+        for (let seg of segments) {
+            // Increase the threshold to 15 pixels for better selection over curved paths.
+            if (isPointNearLine(x, y, seg.x1, seg.y1, seg.x2, seg.y2, 15)) {
+                return arrow;
+            }
+        }
+    }
+    return null;
 }
 
 // --- ADD: Helper function to check if point is near a line ---
-function isPointNearLine(px, py, x1, y1, x2, y2, threshold) {
-  const dist = pointLineDistance(px, py, x1, y1, x2, y2);
-  return dist <= threshold;
+function isPointNearLine(px, py, x1, y1, x2, y2, threshold = 10) {
+    // Increase default threshold to 10 pixels for easier selection
+    
+    // First do a quick bounding box check for performance
+    const minX = Math.min(x1, x2) - threshold;
+    const maxX = Math.max(x1, x2) + threshold;
+    const minY = Math.min(y1, y2) - threshold;
+    const maxY = Math.max(y1, y2) + threshold;
+    
+    if (px < minX || px > maxX || py < minY || py > maxY) {
+        return false;
+    }
+
+    // If we're still here, do the more precise check
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+
+    if (dx === 0 && dy === 0) {
+        // Line is just a point
+        return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2) <= threshold;
+    }
+
+    const t = ((px - x1) * dx + (py - y1) * dy) / (dx ** 2 + dy ** 2);
+    const clampedT = Math.max(0, Math.min(1, t));
+
+    const closestX = x1 + clampedT * dx;
+    const closestY = y1 + clampedT * dy;
+
+    // Calculate distance to the closest point
+    const distance = Math.sqrt((px - closestX) ** 2 + (py - closestY) ** 2);
+    
+    return distance <= threshold;
 }
 
 // --- ADD: Function to calculate point-to-line distance ---
@@ -1954,10 +2070,10 @@ function updateOpacityControl() {
 }
 
 // Add helper function to check if a point is near another point
-function isPointNearPoint(x1, y1, x2, y2, threshold = 5) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  return Math.sqrt(dx * dx + dy * dy) <= threshold;
+function isPointNearPoint(x1, y1, x2, y2, threshold = ARROW_HANDLE_SIZE) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    return Math.sqrt(dx * dx + dy * dy) <= threshold;
 }
 
 // Add an asynchronous helper function for creating an AnimatedGifShape from saved data.
@@ -1982,4 +2098,63 @@ async function createAnimatedGifShape(sdata) {
   
   return animatedShape;
 }
+
+// Add function to draw waypoint handles
+function drawWaypointHandles(ctx, arrow) {
+    if (!arrow.waypoints) return;
+    
+    ctx.save();
+    ctx.fillStyle = "blue";
+    ctx.strokeStyle = "white";
+    
+    // Draw handles for each waypoint
+    arrow.waypoints.forEach((point, index) => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, ARROW_HANDLE_SIZE, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    });
+    
+    ctx.restore();
+}
+
+// ----- Update mousedown for dragging waypoints -----
+// Now checks against the larger ARROW_HANDLE_SIZE for easier selection.
+canvas.addEventListener("mousedown", (e) => {
+    const { x, y } = getCanvasMousePos(e);
+    
+    // Check for waypoint dragging first.
+    if (selectedArrow && selectedArrow.waypoints) {
+        for (let i = 0; i < selectedArrow.waypoints.length; i++) {
+            const point = selectedArrow.waypoints[i];
+            if (isPointNearPoint(x, y, point.x, point.y, ARROW_HANDLE_SIZE)) {
+                selectedWaypointIndex = i;
+                return;
+            }
+        }
+    }
+    
+    // ... Rest of your mousedown code remains unchanged ...
+});
+
+// Update mousemove handler
+canvas.addEventListener("mousemove", (e) => {
+    const { x, y } = getCanvasMousePos(e);
+    
+    if (selectedWaypointIndex !== -1 && selectedArrow) {
+        selectedArrow.waypoints[selectedWaypointIndex].x = x;
+        selectedArrow.waypoints[selectedWaypointIndex].y = y;
+        return;
+    }
+    
+    // ... rest of existing mousemove code ...
+});
+
+// Update mouseup handler
+canvas.addEventListener("mouseup", () => {
+    selectedWaypointIndex = -1;
+    // ... rest of existing mouseup code ...
+});
+
+// Global variables for arrow hovering and waypoint dragging
 
