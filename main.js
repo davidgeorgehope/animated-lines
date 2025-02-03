@@ -718,58 +718,74 @@ canvas.addEventListener("mouseup", (e) => {
 
 // Replace existing dblclick handlers with this merged version:
 canvas.addEventListener("dblclick", (e) => {
-    const { x, y } = getCanvasMousePos(e);
-    
-    // First, see if a shape was double-clicked:
-    const shape = findShapeUnderMouse(x, y);
-    if (shape) {
-        // Show the inline editor for this shape
-        shapeEditorInput.style.display = "block";
-        if (shape instanceof TextShape) {
-            // For a TextShape, position above the text
-            shapeEditorInput.style.left = shape.x + "px";
-            shapeEditorInput.style.top = (shape.y - shape.height - 5) + "px";
-        } else {
-            shapeEditorInput.style.left = shape.x + "px";
-            shapeEditorInput.style.top = (shape.y + shape.height + 5) + "px";
-        }
-        shapeEditorInput.value = shape.text;
-        shapeEditorInput.focus();
-        shapeEditorInput.onkeydown = (evt) => {
-            if (evt.key === "Enter") {
-                updateShapeText(shape, shapeEditorInput.value);
-                clearEditor();
-            }
-        };
-        shapeEditorInput.onblur = () => {
-            updateShapeText(shape, shapeEditorInput.value);
-            clearEditor();
-        };
-    } else if (selectedArrow) {
-        // No shape was clicked, but an arrow is selected:
-        // Loop through all segments in the arrow (including waypoints)
-        const segments = getArrowSegments(selectedArrow);
-        for (let i = 0; i < segments.length; i++) {
-            const seg = segments[i];
-            // Check using an improved threshold
-            if (isPointNearLine(x, y, seg.x1, seg.y1, seg.x2, seg.y2, 15)) {
-                // Ensure waypoint array exists
-                if (!selectedArrow.waypoints) {
-                    selectedArrow.waypoints = [];
-                }
-                const newPoint = { x, y };
-                // Insert new waypoint: if near first segment, add at beginning, if near last add to end
-                if (i === 0) {
-                    selectedArrow.waypoints.unshift(newPoint);
-                } else if (i === segments.length - 1) {
-                    selectedArrow.waypoints.push(newPoint);
-                } else {
-                    selectedArrow.waypoints.splice(i, 0, newPoint);
-                }
-                break;
-            }
-        }
+  const { x, y } = getCanvasMousePos(e);
+  
+  // First, see if a shape was double-clicked:
+  const shape = findShapeUnderMouse(x, y);
+  if (shape) {
+    // Show the inline editor for this shape
+    shapeEditorInput.style.display = "block";
+    if (shape instanceof TextShape) {
+      // For a TextShape, position above the text
+      shapeEditorInput.style.left = shape.x + "px";
+      shapeEditorInput.style.top = (shape.y - shape.height - 5) + "px";
+    } else {
+      shapeEditorInput.style.left = shape.x + "px";
+      shapeEditorInput.style.top = (shape.y + shape.height + 5) + "px";
     }
+    shapeEditorInput.value = shape.text;
+    shapeEditorInput.focus();
+    shapeEditorInput.onkeydown = (evt) => {
+      if (evt.key === "Enter") {
+        updateShapeText(shape, shapeEditorInput.value);
+        clearEditor();
+      }
+    };
+    shapeEditorInput.onblur = () => {
+      updateShapeText(shape, shapeEditorInput.value);
+      clearEditor();
+    };
+    return;
+  }
+  
+  if (selectedArrow) {
+    // --- NEW: Check first if the double-click is on an existing waypoint ---
+    if (selectedArrow.waypoints && selectedArrow.waypoints.length > 0) {
+      for (let i = 0; i < selectedArrow.waypoints.length; i++) {
+        if (isPointNearPoint(x, y, selectedArrow.waypoints[i].x, selectedArrow.waypoints[i].y, ARROW_HANDLE_SIZE)) {
+          // Remove the waypoint
+          selectedArrow.waypoints.splice(i, 1);
+          if (selectedArrow.waypoints.length === 0) {
+            selectedArrow.waypoints = undefined;
+          }
+          return; // Exit so that we don't add a new one.
+        }
+      }
+    }
+    
+    // --- If no waypoint was deleted, proceed with adding a new waypoint ---
+    const segments = getArrowSegments(selectedArrow);
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      // Check using an improved threshold
+      if (isPointNearLine(x, y, seg.x1, seg.y1, seg.x2, seg.y2, 15)) {
+        // Ensure waypoint array exists
+        if (!selectedArrow.waypoints) {
+          selectedArrow.waypoints = [];
+        }
+        const newPoint = { x, y };
+        // Insert new waypoint: if near first segment, add at beginning, if near last add to end
+        if (i === 0) {
+          selectedArrow.waypoints.unshift(newPoint);
+        } else if (i === segments.length - 1) {
+          selectedArrow.waypoints.push(newPoint);
+        } else {
+          selectedArrow.waypoints.splice(i, 0, newPoint);
+        }
+        break;
+      }
+    }
+  }
 });
 
 // Hide and reset the inline editor
