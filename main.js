@@ -2331,3 +2331,107 @@ canvas.addEventListener("mousedown", (e) => {
     }
 });
 
+// Update the button reference
+const btnRemoveColor = document.getElementById("btnRemoveColor");
+
+btnRemoveColor.addEventListener("click", () => {
+  if (!selectedShape) {
+    console.log("No object selected.");
+    return;
+  }
+  if (!(selectedShape instanceof ImageShape)) {
+    console.log("Selected object is not an image.");
+    return;
+  }
+
+  // Create color picker input
+  const colorPicker = document.createElement("input");
+  colorPicker.type = "color";
+  colorPicker.value = "#FFFFFF"; // Default to white
+  
+  // Create a dialog for color selection
+  const dialog = document.createElement("dialog");
+  dialog.style.padding = "20px";
+  
+  const heading = document.createElement("h3");
+  heading.textContent = "Select color to remove";
+  
+  const toleranceLabel = document.createElement("label");
+  toleranceLabel.textContent = "Color tolerance: ";
+  const toleranceInput = document.createElement("input");
+  toleranceInput.type = "range";
+  toleranceInput.min = "0";
+  toleranceInput.max = "100";
+  toleranceInput.value = "20";
+  
+  const confirmBtn = document.createElement("button");
+  confirmBtn.textContent = "Remove Color";
+  confirmBtn.style.marginLeft = "10px";
+  
+  dialog.appendChild(heading);
+  dialog.appendChild(colorPicker);
+  dialog.appendChild(document.createElement("br"));
+  dialog.appendChild(document.createElement("br"));
+  dialog.appendChild(toleranceLabel);
+  dialog.appendChild(toleranceInput);
+  dialog.appendChild(document.createElement("br"));
+  dialog.appendChild(document.createElement("br"));
+  dialog.appendChild(confirmBtn);
+  
+  document.body.appendChild(dialog);
+  dialog.showModal();
+
+  confirmBtn.onclick = () => {
+    const selectedColor = colorPicker.value;
+    const tolerance = parseInt(toleranceInput.value);
+    
+    // Convert hex to RGB
+    const r = parseInt(selectedColor.substr(1,2), 16);
+    const g = parseInt(selectedColor.substr(3,2), 16);
+    const b = parseInt(selectedColor.substr(5,2), 16);
+    
+    // Create an offscreen canvas
+    const offCanvas = document.createElement("canvas");
+    offCanvas.width = selectedShape.img.width;
+    offCanvas.height = selectedShape.img.height;
+    
+    const offCtx = offCanvas.getContext("2d");
+    offCtx.drawImage(selectedShape.img, 0, 0);
+    
+    const imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
+    const data = imgData.data;
+    
+    // Loop through pixels
+    for (let i = 0; i < data.length; i += 4) {
+      const pixelR = data[i];
+      const pixelG = data[i + 1];
+      const pixelB = data[i + 2];
+      
+      // Calculate color difference using Euclidean distance
+      const colorDiff = Math.sqrt(
+        Math.pow(pixelR - r, 2) +
+        Math.pow(pixelG - g, 2) +
+        Math.pow(pixelB - b, 2)
+      );
+      
+      // If color is within tolerance range, make it transparent
+      if (colorDiff <= tolerance * 2.55) { // Convert percentage to 0-255 range
+        data[i + 3] = 0; // Set alpha to 0
+      }
+    }
+    
+    offCtx.putImageData(imgData, 0, 0);
+    
+    // Create and update the new image
+    const newImg = new Image();
+    newImg.onload = function() {
+      selectedShape.img = newImg;
+      redrawCanvas();
+    };
+    newImg.src = offCanvas.toDataURL();
+    
+    dialog.close();
+    dialog.remove();
+  };
+});
+
