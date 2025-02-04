@@ -1783,36 +1783,63 @@ loadBtn.addEventListener("click", loadDiagramFromFile);
 // ----- Revised function to compute arrow segments -----
 // This works for both connected arrows and free arrows (with or without waypoints).
 function getArrowSegments(arrow) {
-    const segments = [];
-    let startX, startY, endX, endY;
-    if (arrow.fromId !== undefined) {
-         // Connected arrow: compute endpoints using shapes
-         const fromShape = shapes.find(s => s.id === arrow.fromId);
-         const toShape = shapes.find(s => s.id === arrow.toId);
-         if (!fromShape || !toShape) return segments;
-         const fromPt = getEdgeIntersection(fromShape, toShape.getCenter().x, toShape.getCenter().y);
-         const toPt = getEdgeIntersection(toShape, fromShape.getCenter().x, fromShape.getCenter().y);
-         startX = fromPt.x;
-         startY = fromPt.y;
-         endX = toPt.x;
-         endY = toPt.y;
-    } else {
-         // Free arrow: use stored coordinates directly.
-         startX = arrow.fromX;
-         startY = arrow.fromY;
-         endX = arrow.toX;
-         endY = arrow.toY;
-    }
-    let prevX = startX, prevY = startY;
+  const segments = [];
+  let startX, startY, endX, endY;
+  let startPoint, endPoint;
+  
+  if (arrow.fromId !== undefined) {
+    // Connected arrow: compute endpoints using shapes
+    const fromShape = shapes.find(s => s.id === arrow.fromId);
+    const toShape = shapes.find(s => s.id === arrow.toId);
+    if (!fromShape || !toShape) return segments;
+
+    // Use waypoints if they exist, same as in drawArrow()
     if (arrow.waypoints && arrow.waypoints.length > 0) {
-         arrow.waypoints.forEach(point => {
-             segments.push({ x1: prevX, y1: prevY, x2: point.x, y2: point.y });
-             prevX = point.x;
-             prevY = point.y;
-         });
+      startPoint = getEdgeIntersection(fromShape, arrow.waypoints[0].x, arrow.waypoints[0].y);
+      endPoint = getEdgeIntersection(toShape, arrow.waypoints[arrow.waypoints.length - 1].x, arrow.waypoints[arrow.waypoints.length - 1].y);
+    } else {
+      startPoint = getEdgeIntersection(fromShape, toShape.getCenter().x, toShape.getCenter().y);
+      endPoint = getEdgeIntersection(toShape, fromShape.getCenter().x, fromShape.getCenter().y);
     }
-    segments.push({ x1: prevX, y1: prevY, x2: endX, y2: endY });
-    return segments;
+  } else {
+    // Free arrow: use stored coordinates directly
+    startPoint = { x: arrow.fromX, y: arrow.fromY };
+    endPoint   = { x: arrow.toX,   y: arrow.toY };
+  }
+  
+  // Prepare the points array as used in drawArrow()
+  let points = [startPoint];
+  if (arrow.waypoints && arrow.waypoints.length > 0) {
+    points.push(...arrow.waypoints);
+  }
+  points.push(endPoint);
+  
+  // If curve mode is on, use the curve points from Catmull-Rom interpolation
+  if (arrow.curve && points.length >= 2) {
+    const curvePoints = getCatmullRomCurvePoints(points, 20);
+    for (let i = 0; i < curvePoints.length - 1; i++) {
+      segments.push({
+        x1: curvePoints[i].x,
+        y1: curvePoints[i].y,
+        x2: curvePoints[i + 1].x,
+        y2: curvePoints[i + 1].y
+      });
+    }
+  } else {
+    // Otherwise, use simple straight segments connecting the points
+    let prevX = points[0].x, prevY = points[0].y;
+    for (let i = 1; i < points.length; i++) {
+      segments.push({
+          x1: prevX,
+          y1: prevY,
+          x2: points[i].x,
+          y2: points[i].y
+      });
+      prevX = points[i].x;
+      prevY = points[i].y;
+    }
+  }
+  return segments;
 }
 
 // ----- Revised hit detection for arrows -----
