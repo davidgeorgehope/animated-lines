@@ -1608,6 +1608,7 @@ function saveDiagram() {
           toY: arrow.toY,
           color: arrow.color,
           lineWidth: arrow.lineWidth,
+          curve: arrow.curve, // Add this line
         };
       } else {
         // Connected arrow
@@ -1616,6 +1617,7 @@ function saveDiagram() {
           toId: arrow.toId,
           color: arrow.color,
           lineWidth: arrow.lineWidth,
+          curve: arrow.curve, // Add this line
         };
       }
       // Save optional properties if they exist.
@@ -1706,6 +1708,7 @@ async function importDiagram(jsonText) {
           color: arrowData.color,
           lineWidth: arrowData.lineWidth,
           waypoints: arrowData.waypoints, // may be undefined
+          curve: arrowData.curve || false, // Add this line with default
         };
       } else {
         // Connected arrow
@@ -1717,6 +1720,7 @@ async function importDiagram(jsonText) {
           waypoints: arrowData.waypoints,          // may be undefined
           startAttachment: arrowData.startAttachment,  // may be undefined
           endAttachment: arrowData.endAttachment,      // may be undefined
+          curve: arrowData.curve || false, // Add this line with default
         };
       }
     });
@@ -2268,6 +2272,34 @@ toggleCurveBtn.addEventListener("click", () => {
         // The animate loop will handle the redraw automatically
     } else {
         console.log("No arrow selected");
+    }
+});
+
+// Update the arrow selection logic to maintain toggle button state
+function updateToggleButtonState(arrow) {
+    const toggleCurveBtn = document.getElementById("toggleCurveBtn");
+    if (arrow) {
+        toggleCurveBtn.textContent = arrow.curve ? "Curve" : "Straight";
+    }
+}
+
+// Add this to wherever you handle arrow selection
+canvas.addEventListener("mousedown", (e) => {
+    const { x, y } = getCanvasMousePos(e);  // Get mouse position first
+    
+    // If we clicked an arrow
+    const clickedArrow = findArrowUnderMouse(x, y);
+    if (clickedArrow) {
+        selectedArrow = clickedArrow;
+        selectedShape = null;
+        updateToggleButtonState(clickedArrow);
+        return;
+    }
+    
+    // If we didn't click an arrow, clear selection
+    if (selectedArrow) {
+        selectedArrow = null;
+        updateToggleButtonState(null);
     }
 });
 
