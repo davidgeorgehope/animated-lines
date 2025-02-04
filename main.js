@@ -989,12 +989,35 @@ function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
 
     ctx.beginPath();
     
+    // For connected arrows, recalculate the start and end points
+    let startPoint = { x: fromX, y: fromY };
+    let endPoint = { x: toX, y: toY };
+
+    if (arrowObj.fromId !== undefined) {
+        const fromShape = shapes.find(s => s.id === arrowObj.fromId);
+        const toShape = shapes.find(s => s.id === arrowObj.toId);
+        if (fromShape && toShape) {
+            let startTarget, endTarget;
+            
+            if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
+                startTarget = arrowObj.waypoints[0];
+                endTarget = arrowObj.waypoints[arrowObj.waypoints.length - 1];
+            } else {
+                startTarget = toShape.getCenter();
+                endTarget = fromShape.getCenter();
+            }
+
+            startPoint = getEdgeIntersection(fromShape, startTarget.x, startTarget.y);
+            endPoint = getEdgeIntersection(toShape, endTarget.x, endTarget.y);
+        }
+    }
+
     // Build points array including start, waypoints, and end
-    let points = [{ x: fromX, y: fromY }];
+    let points = [startPoint];
     if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
         points.push(...arrowObj.waypoints);
     }
-    points.push({ x: toX, y: toY });
+    points.push(endPoint);
 
     if (arrowObj.curve && points.length >= 2) {
         // Draw curved path
@@ -1005,25 +1028,25 @@ function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
         });
     } else {
         // Draw straight lines
-        ctx.moveTo(fromX, fromY);
+        ctx.moveTo(startPoint.x, startPoint.y);
         if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
             arrowObj.waypoints.forEach(point => {
                 ctx.lineTo(point.x, point.y);
             });
         }
-        ctx.lineTo(toX, toY);
+        ctx.lineTo(endPoint.x, endPoint.y);
     }
     
     ctx.stroke();
 
-    // Draw the arrowhead
+    // Draw the arrowhead using the final segment
     let finalFromX = arrowObj.waypoints && arrowObj.waypoints.length > 0 
         ? arrowObj.waypoints[arrowObj.waypoints.length - 1].x 
-        : fromX;
+        : startPoint.x;
     let finalFromY = arrowObj.waypoints && arrowObj.waypoints.length > 0 
         ? arrowObj.waypoints[arrowObj.waypoints.length - 1].y 
-        : fromY;
-    drawArrowhead(ctx, finalFromX, finalFromY, toX, toY, arrowObj.color);
+        : startPoint.y;
+    drawArrowhead(ctx, finalFromX, finalFromY, endPoint.x, endPoint.y, arrowObj.color);
 
     // Draw waypoint handles if the arrow is selected
     if (selectedArrow === arrowObj) {
@@ -1884,16 +1907,21 @@ function drawArrowSelectionHandles(ctx, arrow) {
     const toShape = shapes.find((s) => s.id === arrow.toId);
     if (!fromShape || !toShape) return;
 
-    const fromPt = getEdgeIntersection(
-      fromShape,
-      toShape.x + toShape.width / 2,
-      toShape.y + toShape.height / 2
-    );
-    const toPt = getEdgeIntersection(
-      toShape,
-      fromShape.x + fromShape.width / 2,
-      fromShape.y + fromShape.height / 2
-    );
+    // If there are waypoints, use the first and last waypoints as targets
+    // for calculating intersection points
+    let startTarget, endTarget;
+    
+    if (arrow.waypoints && arrow.waypoints.length > 0) {
+      startTarget = arrow.waypoints[0];
+      endTarget = arrow.waypoints[arrow.waypoints.length - 1];
+    } else {
+      startTarget = toShape.getCenter();
+      endTarget = fromShape.getCenter();
+    }
+
+    const fromPt = getEdgeIntersection(fromShape, startTarget.x, startTarget.y);
+    const toPt = getEdgeIntersection(toShape, endTarget.x, endTarget.y);
+    
     fromX = fromPt.x;
     fromY = fromPt.y;
     toX = toPt.x;
