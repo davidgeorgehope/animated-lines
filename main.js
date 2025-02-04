@@ -675,7 +675,13 @@ canvas.addEventListener("mouseup", (e) => {
     const { x, y } = getCanvasMousePos(e);
     const releasedShape = findShapeUnderMouse(x, y);
     if (releasedShape && releasedShape !== arrowStartShape) {
-      arrows.push({ fromId: arrowStartShape.id, toId: releasedShape.id });
+        arrows.push({ 
+            fromId: arrowStartShape.id, 
+            toId: releasedShape.id,
+            curve: false,  // Add this line
+            color: arrowColorPicker.value,
+            lineWidth: parseInt(lineThicknessPicker.value) || 2
+        });
     }
     isDrawingLine = false;
     arrowStartShape = null;
@@ -685,14 +691,15 @@ canvas.addEventListener("mouseup", (e) => {
   if (isDrawingFreeArrow && freeArrowStart) {
     const { x, y } = getCanvasMousePos(e);
     const newArrow = {
-      fromId: undefined,
-      toId: undefined,
-      fromX: freeArrowStart.x,
-      fromY: freeArrowStart.y,
-      toX: x,
-      toY: y,
-      color: arrowColorPicker.value,
-      lineWidth: parseInt(lineThicknessPicker.value) || 2
+        fromId: undefined,
+        toId: undefined,
+        fromX: freeArrowStart.x,
+        fromY: freeArrowStart.y,
+        toX: x,
+        toY: y,
+        curve: false,  // Add this line
+        color: arrowColorPicker.value,
+        lineWidth: parseInt(lineThicknessPicker.value) || 2
     };
     arrows.push(newArrow);
     isDrawingFreeArrow = false;
@@ -970,7 +977,6 @@ function animate() {
 function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
     ctx.save();
     
-    // Adjust line thickness for hovered or selected arrows
     if (arrowObj === hoveredArrow || arrowObj === selectedArrow) {
         ctx.lineWidth = (arrowObj.lineWidth || 2) + 2;
     } else {
@@ -981,16 +987,24 @@ function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
     ctx.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
     ctx.strokeStyle = arrowObj.color || "#000";
 
-    // This block draws the yellow highlight for hovered arrows.
-    // Remove or comment it out if you do not want the highlight.
-    /*
-    if (arrowObj === hoveredArrow && arrowObj !== selectedArrow) {
-        ctx.save();
-        ctx.strokeStyle = "rgba(255, 255, 0, 0.3)";
-        ctx.lineWidth = ctx.lineWidth + 4;
-        ctx.setLineDash([]);
+    ctx.beginPath();
     
-        ctx.beginPath();
+    // Build points array including start, waypoints, and end
+    let points = [{ x: fromX, y: fromY }];
+    if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
+        points.push(...arrowObj.waypoints);
+    }
+    points.push({ x: toX, y: toY });
+
+    if (arrowObj.curve && points.length >= 2) {
+        // Draw curved path
+        let curvePoints = getCatmullRomCurvePoints(points, 20);
+        ctx.moveTo(points[0].x, points[0].y);
+        curvePoints.forEach(point => {
+            ctx.lineTo(point.x, point.y);
+        });
+    } else {
+        // Draw straight lines
         ctx.moveTo(fromX, fromY);
         if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
             arrowObj.waypoints.forEach(point => {
@@ -998,20 +1012,8 @@ function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
             });
         }
         ctx.lineTo(toX, toY);
-        ctx.stroke();
-        ctx.restore();
     }
-    */
-
-    // Draw the main arrow line
-    ctx.beginPath();
-    ctx.moveTo(fromX, fromY);
-    if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
-        arrowObj.waypoints.forEach(point => {
-            ctx.lineTo(point.x, point.y);
-        });
-    }
-    ctx.lineTo(toX, toY);
+    
     ctx.stroke();
 
     // Draw the arrowhead
@@ -2226,4 +2228,46 @@ canvas.addEventListener("mouseup", () => {
 });
 
 // Global variables for arrow hovering and waypoint dragging
+
+function getCatmullRomCurvePoints(points, numOfSegments) {
+    // Returns an array of interpolated points along the Catmull-Rom spline.
+    let curvePoints = [];
+    for (let i = 0; i < points.length - 1; i++) {
+        // Handle boundary cases
+        let p0 = i === 0 ? points[i] : points[i - 1];
+        let p1 = points[i];
+        let p2 = points[i + 1];
+        let p3 = (i + 2 < points.length) ? points[i + 2] : p2;
+        
+        for (let t = 0; t <= 1; t += 1 / numOfSegments) {
+            let t2 = t * t;
+            let t3 = t2 * t;
+            let x = 0.5 * ((2 * p1.x) +
+                (-p0.x + p2.x) * t +
+                (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+                (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+            let y = 0.5 * ((2 * p1.y) +
+                (-p0.y + p2.y) * t +
+                (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+                (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+            curvePoints.push({ x, y });
+        }
+    }
+    return curvePoints;
+}
+
+// Toggle curve mode button event listener
+const toggleCurveBtn = document.getElementById("toggleCurveBtn");
+toggleCurveBtn.addEventListener("click", () => {
+    console.log("Toggle button clicked");
+    if (selectedArrow) {
+        console.log("Selected arrow found");
+        selectedArrow.curve = !selectedArrow.curve;
+        console.log("Curve mode:", selectedArrow.curve);
+        toggleCurveBtn.textContent = selectedArrow.curve ? "Curve" : "Straight";
+        // The animate loop will handle the redraw automatically
+    } else {
+        console.log("No arrow selected");
+    }
+});
 
