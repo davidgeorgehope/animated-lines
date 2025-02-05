@@ -2098,7 +2098,6 @@ animatedBorderBtn.addEventListener('click', () => {
   // animatedBorderBtn.textContent = selectedShape.isAnimated ? 'On' : 'Off';
 
   // Redraw canvas
-  redrawCanvas();
 }); 
 
 // Get reference to the new opacity slider
@@ -2110,7 +2109,6 @@ opacityRange.addEventListener("input", (e) => {
     // Set the selected shape's opacity to the slider value (a number between 0 and 1)
     selectedShape.opacity = parseFloat(e.target.value);
     // Optionally redraw the canvas if you have a redraw function
-    redrawCanvas();
   }
 });
 
@@ -2198,7 +2196,6 @@ btnRemoveWhite.addEventListener("click", () => {
     selectedShape.width = newImg.width;
     selectedShape.height = newImg.height;
     // Redraw the canvas if needed (assuming your animation loop is running continuously)
-    redrawCanvas();
   };
   
   // Set the new source to the canvas data URL
@@ -2493,7 +2490,6 @@ btnRemoveColor.addEventListener("click", () => {
     const newImg = new Image();
     newImg.onload = function() {
       selectedShape.img = newImg;
-      redrawCanvas();
     };
     newImg.src = offCanvas.toDataURL();
     
