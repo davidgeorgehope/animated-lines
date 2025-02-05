@@ -458,13 +458,12 @@ let draggedHandle = null;           // 'start' or 'end' to identify which endpoi
 canvas.addEventListener("mousedown", (e) => {
   const { x, y } = getCanvasMousePos(e);
 
-  // *** New: If a waypoint is clicked on, start dragging that waypoint and exit immediately ***
-  if (selectedArrow && selectedArrow.waypoints) {
+  // Add null check for selectedArrow before accessing waypoints
+  if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length > 0) {
     for (let i = 0; i < selectedArrow.waypoints.length; i++) {
       const point = selectedArrow.waypoints[i];
       if (isPointNearPoint(x, y, point.x, point.y, ARROW_HANDLE_SIZE)) {
         selectedWaypointIndex = i;
-        // Prevent any further arrow-dragging logic for this event.
         return;
       }
     }
@@ -1823,31 +1822,35 @@ loadBtn.addEventListener("click", loadDiagramFromFile);
 // ----- Revised function to compute arrow segments -----
 // This works for both connected arrows and free arrows (with or without waypoints).
 function getArrowSegments(arrow) {
+  if (!arrow) return [];
   const segments = [];
-  let startX, startY, endX, endY;
+  
   let startPoint, endPoint;
   
   if (arrow.fromId !== undefined) {
-    // Connected arrow: compute endpoints using shapes
     const fromShape = shapes.find(s => s.id === arrow.fromId);
     const toShape = shapes.find(s => s.id === arrow.toId);
     if (!fromShape || !toShape) return segments;
 
-    // Use waypoints if they exist, same as in drawArrow()
+    let startTarget, endTarget;
+    
     if (arrow.waypoints && arrow.waypoints.length > 0) {
-      startPoint = getEdgeIntersection(fromShape, arrow.waypoints[0].x, arrow.waypoints[0].y);
-      endPoint = getEdgeIntersection(toShape, arrow.waypoints[arrow.waypoints.length - 1].x, arrow.waypoints[arrow.waypoints.length - 1].y);
+      startTarget = arrow.waypoints[0];
+      endTarget = arrow.waypoints[arrow.waypoints.length - 1];
     } else {
-      startPoint = getEdgeIntersection(fromShape, toShape.getCenter().x, toShape.getCenter().y);
-      endPoint = getEdgeIntersection(toShape, fromShape.getCenter().x, fromShape.getCenter().y);
+      startTarget = toShape.getCenter();
+      endTarget = fromShape.getCenter();
     }
+
+    startPoint = getEdgeIntersection(fromShape, startTarget.x, startTarget.y);
+    endPoint = getEdgeIntersection(toShape, endTarget.x, endTarget.y);
   } else {
-    // Free arrow: use stored coordinates directly
+    // Free arrow
     startPoint = { x: arrow.fromX, y: arrow.fromY };
-    endPoint   = { x: arrow.toX,   y: arrow.toY };
+    endPoint = { x: arrow.toX, y: arrow.toY };
   }
-  
-  // Prepare the points array as used in drawArrow()
+
+  // Build points array including start, waypoints, and end
   let points = [startPoint];
   if (arrow.waypoints && arrow.waypoints.length > 0) {
     points.push(...arrow.waypoints);
@@ -1964,8 +1967,8 @@ arrowColorPicker.addEventListener("input", (e) => {
 
 // --- ADD: Function to draw selection handles for an arrow ---
 function drawArrowSelectionHandles(ctx, arrow) {
-  if (!arrow) return;
-
+  if (!arrow || !ctx) return;
+  
   let fromX, fromY, toX, toY;
 
   if (arrow.fromId !== undefined) {
@@ -2268,21 +2271,21 @@ async function createAnimatedGifShape(sdata) {
 
 // Add function to draw waypoint handles
 function drawWaypointHandles(ctx, arrow) {
-    if (!arrow.waypoints) return;
-    
-    ctx.save();
-    ctx.fillStyle = "blue";
-    ctx.strokeStyle = "white";
-    
-    // Draw handles for each waypoint
-    arrow.waypoints.forEach((point, index) => {
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, ARROW_HANDLE_SIZE, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-    });
-    
-    ctx.restore();
+  if (!ctx || !arrow || !arrow.waypoints || !arrow.waypoints.length) return;
+  
+  ctx.save();
+  ctx.fillStyle = "blue";
+  ctx.strokeStyle = "white";
+  
+  // Draw handles for each waypoint
+  arrow.waypoints.forEach((point, index) => {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, ARROW_HANDLE_SIZE, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+  });
+  
+  ctx.restore();
 }
 
 // ----- Update mousedown for dragging waypoints -----
@@ -2291,7 +2294,7 @@ canvas.addEventListener("mousedown", (e) => {
     const { x, y } = getCanvasMousePos(e);
     
     // Check for waypoint dragging first.
-    if (selectedArrow && selectedArrow.waypoints) {
+    if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length > 0) {
         for (let i = 0; i < selectedArrow.waypoints.length; i++) {
             const point = selectedArrow.waypoints[i];
             if (isPointNearPoint(x, y, point.x, point.y, ARROW_HANDLE_SIZE)) {
