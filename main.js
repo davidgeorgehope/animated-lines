@@ -754,7 +754,7 @@ canvas.addEventListener("dblclick", (e) => {
   }
   
   if (selectedArrow) {
-    // --- NEW: Check first if the double-click is on an existing waypoint ---
+    // Check first if double-click is on an existing waypoint
     if (selectedArrow.waypoints && selectedArrow.waypoints.length > 0) {
       for (let i = 0; i < selectedArrow.waypoints.length; i++) {
         if (isPointNearPoint(x, y, selectedArrow.waypoints[i].x, selectedArrow.waypoints[i].y, ARROW_HANDLE_SIZE)) {
@@ -763,29 +763,63 @@ canvas.addEventListener("dblclick", (e) => {
           if (selectedArrow.waypoints.length === 0) {
             selectedArrow.waypoints = undefined;
           }
-          return; // Exit so that we don't add a new one.
+          return;
         }
       }
     }
     
-    // --- If no waypoint was deleted, proceed with adding a new waypoint ---
+    // If no waypoint was deleted, proceed with adding a new waypoint
     const segments = getArrowSegments(selectedArrow);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
-      // Check using an improved threshold
       if (isPointNearLine(x, y, seg.x1, seg.y1, seg.x2, seg.y2, 15)) {
         // Ensure waypoint array exists
         if (!selectedArrow.waypoints) {
           selectedArrow.waypoints = [];
         }
+        
         const newPoint = { x, y };
-        // Insert new waypoint: if near first segment, add at beginning, if near last add to end
-        if (i === 0) {
-          selectedArrow.waypoints.unshift(newPoint);
-        } else if (i === segments.length - 1) {
-          selectedArrow.waypoints.push(newPoint);
+        
+        if (selectedArrow.curve) {
+          // For curved arrows, we need to find the exact segment where the click occurred
+          const allPoints = getArrowPoints(selectedArrow);
+          
+          // Find which actual segment pair contains our click point
+          let segmentIndex = -1;
+          for (let j = 0; j < allPoints.length - 1; j++) {
+            if (isPointNearLine(x, y, 
+                allPoints[j].x, allPoints[j].y,
+                allPoints[j + 1].x, allPoints[j + 1].y, 15)) {
+              segmentIndex = j;
+              break;
+            }
+          }
+          
+          if (segmentIndex === -1) return; // Shouldn't happen, but just in case
+          
+          // Convert segment index to waypoint index
+          let waypointIndex;
+          if (segmentIndex === 0) {
+            // Click is between start point and first waypoint (or end if no waypoints)
+            waypointIndex = 0;
+          } else if (segmentIndex >= allPoints.length - 2) {
+            // Click is between last waypoint and end point
+            waypointIndex = selectedArrow.waypoints.length;
+          } else {
+            // Click is between two waypoints
+            waypointIndex = segmentIndex;
+          }
+          
+          selectedArrow.waypoints.splice(waypointIndex, 0, newPoint);
         } else {
-          selectedArrow.waypoints.splice(i, 0, newPoint);
+          // For straight lines, maintain existing logic
+          if (i === 0) {
+            selectedArrow.waypoints.unshift(newPoint);
+          } else if (i === segments.length - 1) {
+            selectedArrow.waypoints.push(newPoint);
+          } else {
+            selectedArrow.waypoints.splice(i, 0, newPoint);
+          }
         }
         break;
       }
@@ -2499,4 +2533,47 @@ btnRemoveColor.addEventListener("click", () => {
     dialog.remove();
   };
 });
+
+// Helper function to get all points of an arrow (including start, waypoints, and end)
+function getArrowPoints(arrow) {
+  let points = [];
+  
+  if (arrow.fromId !== undefined) {
+    // Connected arrow
+    const fromShape = shapes.find(s => s.id === arrow.fromId);
+    const toShape = shapes.find(s => s.id === arrow.toId);
+    if (!fromShape || !toShape) return points;
+    
+    let startTarget = arrow.waypoints && arrow.waypoints.length > 0 
+      ? arrow.waypoints[0] 
+      : toShape.getCenter();
+    let endTarget = arrow.waypoints && arrow.waypoints.length > 0
+      ? arrow.waypoints[arrow.waypoints.length - 1]
+      : fromShape.getCenter();
+      
+    points.push(getEdgeIntersection(fromShape, startTarget.x, startTarget.y));
+  } else {
+    // Free arrow
+    points.push({ x: arrow.fromX, y: arrow.fromY });
+  }
+  
+  // Add waypoints
+  if (arrow.waypoints && arrow.waypoints.length > 0) {
+    points.push(...arrow.waypoints);
+  }
+  
+  // Add end point
+  if (arrow.fromId !== undefined) {
+    const toShape = shapes.find(s => s.id === arrow.toId);
+    const fromShape = shapes.find(s => s.id === arrow.fromId);
+    let endTarget = arrow.waypoints && arrow.waypoints.length > 0
+      ? arrow.waypoints[arrow.waypoints.length - 1]
+      : fromShape.getCenter();
+    points.push(getEdgeIntersection(toShape, endTarget.x, endTarget.y));
+  } else {
+    points.push({ x: arrow.toX, y: arrow.toY });
+  }
+  
+  return points;
+}
 
