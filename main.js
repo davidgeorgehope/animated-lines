@@ -10,7 +10,6 @@ let exportDashOffset = 0;
 const canvas = document.getElementById("myCanvas");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 console.log("gifuct:", window.gifuct);
-// Set to 1200×627 for LinkedIn
 canvas.width = 1200;
 canvas.height = 1200;
 
