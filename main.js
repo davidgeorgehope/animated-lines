@@ -1093,9 +1093,8 @@ function drawArrowhead(ctx, fromX, fromY, toX, toY, color = "#000000") {
 
 // --- MODIFIED: Combined start/stop and export into a single function ---
 function exportAnimatedGif() {
-  // Set export mode and initialize the dash offset used in export.
   exportingGif = true;
-  exportDashOffset = -dashOffset; // Initialize with negative version to mimic live behavior
+  exportDashOffset = -dashOffset;
 
   console.log("Initializing GIF recorder and starting export...");
   let gif = new GIF({
@@ -1119,30 +1118,71 @@ function exportAnimatedGif() {
     link.click();
     URL.revokeObjectURL(url);
     gif = null;
-    // Exit export mode once done.
     exportingGif = false;
   });
 
-  // For example, capture at 30 FPS to manage file size.
-  const captureDurationMs = 3000; // Total capture duration; adjust as needed.
-  const frameDelayMs = 33;        // About 30 FPS (33 ms per frame).
-  const numFrames = captureDurationMs / frameDelayMs;
-  let frameCount = 0;
+  // Find all animated GIFs and their total cycle times
+  let longestCycle = 0;
+  let shortestDelay = Infinity;
+  let hasAnimatedContent = false;
 
-  function captureFrame() {
-    if (frameCount < numFrames) {
-      // Update exportDashOffset in the same direction as the live dash offset.
-      exportDashOffset -= 2; // Use negative increment instead
-      gif.addFrame(canvas, { copy: true, delay: frameDelayMs });
-      frameCount++;
-      setTimeout(captureFrame, frameDelayMs);
-    } else {
-      console.log("Finished capturing frames. Rendering GIF...");
-      gif.render();
+  shapes.forEach(shape => {
+    if (shape instanceof AnimatedGifShape && shape.imageFrames) {
+      hasAnimatedContent = true;
+      let totalDelay = 0;
+      shape.imageFrames.forEach(frame => {
+        const frameDelay = frame.delay || 100;
+        totalDelay += frameDelay;
+        shortestDelay = Math.min(shortestDelay, frameDelay);
+      });
+      longestCycle = Math.max(longestCycle, totalDelay);
     }
+    if (shape.isAnimated) {
+      hasAnimatedContent = true;
+      longestCycle = Math.max(longestCycle, 500); // Animated borders cycle
+      shortestDelay = Math.min(shortestDelay, 50);
+    }
+  });
+
+  // If no animations found, use default values
+  if (!hasAnimatedContent) {
+    longestCycle = 500;
+    shortestDelay = 50;
   }
 
-  captureFrame();
+  // Ensure we have reasonable values
+  shortestDelay = Math.max(20, Math.min(shortestDelay, 100)); // Between 20ms and 100ms
+  const frameDelay = shortestDelay;
+  const numFrames = Math.ceil(longestCycle / frameDelay);
+
+  console.log(`Recording ${numFrames} frames with ${frameDelay}ms delay (cycle: ${longestCycle}ms)`);
+  
+  let frameCount = 0;
+  let lastCapture = 0;
+
+  function captureFrame(timestamp) {
+    if (frameCount >= numFrames) {
+      console.log("Finished capturing frames. Rendering GIF...");
+      gif.render();
+      return;
+    }
+
+    // Only capture frame if enough time has passed
+    if (timestamp - lastCapture >= frameDelay) {
+      gif.addFrame(canvas, { 
+        copy: true, 
+        delay: frameDelay
+      });
+      lastCapture = timestamp;
+      frameCount++;
+      exportDashOffset -= 2;
+    }
+
+    requestAnimationFrame(captureFrame);
+  }
+
+  // Start capture on next animation frame
+  requestAnimationFrame(captureFrame);
 }
 
 // ========== ADD: Canvas drag/drop listeners ==========
