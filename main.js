@@ -284,29 +284,27 @@ class Shape {
   draw(ctx) {
     ctx.save();
     
-    // Set global alpha based on the shape's opacity
+    // Set opacity & fill the shape
     ctx.globalAlpha = this.opacity;
-    
-    // Fill the shape
     ctx.fillStyle = this.fillColor;
     ctx.fillRect(this.x, this.y, this.width, this.height);
 
-    // Check for animated border
     if (this.isAnimated) {
-      ctx.setLineDash([10, 5]);
-      // Use exportDashOffset when exporting; otherwise use the live dashOffset
-      ctx.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
+      ctx.setLineDash([6, 4]); // Use the same dash pattern
+      
+      // Determine effective dash offset:
+      const effectiveDashOffset = exportingGif ? exportDashOffset : dashOffset;
+      ctx.lineDashOffset = -(effectiveDashOffset % 10);
     } else {
       ctx.setLineDash([]);
       ctx.lineDashOffset = 0;
     }
     
-    // Stroke the shape
+    // Stroke the border and draw text (if any)
     ctx.strokeStyle = this.color;
     ctx.lineWidth = this.lineWidth;
     ctx.strokeRect(this.x, this.y, this.width, this.height);
     
-    // Draw text centered in the shape
     ctx.fillStyle = this.textColor;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     const metrics = ctx.measureText(this.text);
@@ -925,6 +923,7 @@ let canvasBgColor = "#ffffff";
 
 // The animate() function:
 function animate() {
+    // Clear the canvas
     ctx.fillStyle = canvasBgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -932,76 +931,64 @@ function animate() {
     shapes.forEach((shape) => {
       shape.draw(ctx);
     });
-
-    // Draw arrows (both connected and free)
+    
+    // Draw both connected and free arrows
     arrows.forEach((arrow) => {
-        if (arrow.fromId !== undefined) {
-            // Connected arrow: adjust endpoints if a waypoint exists.
-            const fromShape = shapes.find((s) => s.id === arrow.fromId);
-            const toShape = shapes.find((s) => s.id === arrow.toId);
-            if (fromShape && toShape) {
-                // Set default target points as the centers of the opposite shapes.
-                let startTargetX = toShape.x + toShape.width / 2;
-                let startTargetY = toShape.y + toShape.height / 2;
-                let endTargetX = fromShape.x + fromShape.width / 2;
-                let endTargetY = fromShape.y + fromShape.height / 2;
-                
-                // If the arrow has waypoints, use the first waypoint for the source and 
-                // the last waypoint for the target.
-                if (arrow.waypoints && arrow.waypoints.length > 0) {
-                    startTargetX = arrow.waypoints[0].x;
-                    startTargetY = arrow.waypoints[0].y;
-                    endTargetX = arrow.waypoints[arrow.waypoints.length - 1].x;
-                    endTargetY = arrow.waypoints[arrow.waypoints.length - 1].y;
-                }
-                
-                // Compute the intersection between the source shape and the direction
-                // toward its target (first waypoint or center of the target), and similarly for the target shape.
-                const fromPt = getEdgeIntersection(fromShape, startTargetX, startTargetY);
-                const toPt = getEdgeIntersection(toShape, endTargetX, endTargetY);
-                
-                drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow);
-            }
-        } else {
-          // Free arrow
+      if (arrow.fromId !== undefined) {
+          const fromShape = shapes.find(s => s.id === arrow.fromId);
+          const toShape = shapes.find(s => s.id === arrow.toId);
+          if (fromShape && toShape) {
+              let startTargetX = (arrow.waypoints && arrow.waypoints.length > 0)
+                ? arrow.waypoints[0].x 
+                : toShape.x + toShape.width / 2;
+              let startTargetY = (arrow.waypoints && arrow.waypoints.length > 0)
+                ? arrow.waypoints[0].y 
+                : toShape.y + toShape.height / 2;
+  
+              let endTargetX = (arrow.waypoints && arrow.waypoints.length > 0)
+                ? arrow.waypoints[arrow.waypoints.length - 1].x 
+                : fromShape.x + fromShape.width / 2;
+              let endTargetY = (arrow.waypoints && arrow.waypoints.length > 0)
+                ? arrow.waypoints[arrow.waypoints.length - 1].y 
+                : fromShape.y + fromShape.height / 2;
+  
+              const fromPt = getEdgeIntersection(fromShape, startTargetX, startTargetY);
+              const toPt = getEdgeIntersection(toShape, endTargetX, endTargetY);
+  
+              drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow);
+          }
+      } else {
+          // Free arrow drawing
           drawArrow(ctx, arrow.fromX, arrow.fromY, arrow.toX, arrow.toY, arrow);
-        }
+      }
     });
-
-    // If currently drawing a connected arrow (rubber band), draw it
+    
+    // Draw temporary arrow lines (if any)
     if (isDrawingLine && arrowStartShape) {
-      const fromPt = getEdgeIntersection(
-        arrowStartShape,
-        arrowEndPos.x,
-        arrowEndPos.y
-      );
+      const fromPt = getEdgeIntersection(arrowStartShape, arrowEndPos.x, arrowEndPos.y);
       drawTempLine(ctx, fromPt.x, fromPt.y, arrowEndPos.x, arrowEndPos.y);
     }
-
-    // --- New: If a free arrow is being drawn, draw it
+    
     if (isDrawingFreeArrow && freeArrowStart && currentFreeArrowPos) {
       drawArrow(ctx, freeArrowStart.x, freeArrowStart.y, currentFreeArrowPos.x, currentFreeArrowPos.y, {
-          color: arrowColorPicker.value,
-          lineWidth: parseInt(lineThicknessPicker.value) || 2
+        color: arrowColorPicker.value,
+        lineWidth: parseInt(lineThicknessPicker.value) || 2
       });
     }
 
-    // Draw resize handles if a shape is selected
+    // Draw additional handles (if any)
     if (selectedShape) {
       drawResizeHandles(ctx, selectedShape);
     }
-
-    // Draw arrow selection handles if an arrow is selected
     if (selectedArrow) {
       drawArrowSelectionHandles(ctx, selectedArrow);
     }
-
-    // Update dash offset only once per frame
+    
+    // Update dash offset for canvas animation only when not exporting
     if (!exportingGif) {
-      dashOffset += 2;
-      if (dashOffset > 10000) dashOffset = 0;
+      dashOffset += 0.5; // Adjust this for desired speed
     }
-
+  
     requestAnimationFrame(animate);
 }
 
@@ -1010,79 +997,71 @@ function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
     ctx.save();
     
     if (arrowObj === hoveredArrow || arrowObj === selectedArrow) {
-        ctx.lineWidth = (arrowObj.lineWidth || 2) + 2;
+      ctx.lineWidth = (arrowObj.lineWidth || 2) + 2;
     } else {
-        ctx.lineWidth = arrowObj.lineWidth || 2;
+      ctx.lineWidth = arrowObj.lineWidth || 2;
     }
     
-    ctx.setLineDash([6, 4]);
-    ctx.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
-    ctx.strokeStyle = arrowObj.color || "#000";
-
-    ctx.beginPath();
+    ctx.setLineDash([6, 4]); // Same dash pattern for arrows
     
-    // For connected arrows, recalculate the start and end points
+    // Determine effective dash offset for arrows:
+    const effectiveDashOffset = exportingGif ? exportDashOffset : dashOffset;
+    ctx.lineDashOffset = -(effectiveDashOffset % 10);
+    
+    ctx.strokeStyle = arrowObj.color || "#000";
+  
+    ctx.beginPath();
     let startPoint = { x: fromX, y: fromY };
     let endPoint = { x: toX, y: toY };
-
+  
     if (arrowObj.fromId !== undefined) {
         const fromShape = shapes.find(s => s.id === arrowObj.fromId);
         const toShape = shapes.find(s => s.id === arrowObj.toId);
         if (fromShape && toShape) {
-            let startTarget, endTarget;
-            
-            if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
-                startTarget = arrowObj.waypoints[0];
-                endTarget = arrowObj.waypoints[arrowObj.waypoints.length - 1];
-            } else {
-                startTarget = toShape.getCenter();
-                endTarget = fromShape.getCenter();
-            }
-
-            startPoint = getEdgeIntersection(fromShape, startTarget.x, startTarget.y);
-            endPoint = getEdgeIntersection(toShape, endTarget.x, endTarget.y);
+          let startTarget, endTarget;
+          if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
+            startTarget = arrowObj.waypoints[0];
+            endTarget = arrowObj.waypoints[arrowObj.waypoints.length - 1];
+          } else {
+            startTarget = toShape.getCenter();
+            endTarget = fromShape.getCenter();
+          }
+          startPoint = getEdgeIntersection(fromShape, startTarget.x, startTarget.y);
+          endPoint = getEdgeIntersection(toShape, endTarget.x, endTarget.y);
         }
     }
-
-    // Build points array including start, waypoints, and end
+  
     let points = [startPoint];
-    if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
-        points.push(...arrowObj.waypoints);
+    if (arrowObj.waypoints && arrowObj.waypoints.length) {
+      points.push(...arrowObj.waypoints);
     }
     points.push(endPoint);
-
+    
     if (arrowObj.curve && points.length >= 2) {
-        // Draw curved path
-        let curvePoints = getCatmullRomCurvePoints(points, 20);
-        ctx.moveTo(points[0].x, points[0].y);
-        curvePoints.forEach(point => {
-            ctx.lineTo(point.x, point.y);
-        });
+      let curvePoints = getCatmullRomCurvePoints(points, 20);
+      ctx.moveTo(points[0].x, points[0].y);
+      curvePoints.forEach(pt => ctx.lineTo(pt.x, pt.y));
     } else {
-        // Draw straight lines
-        ctx.moveTo(startPoint.x, startPoint.y);
-        if (arrowObj.waypoints && arrowObj.waypoints.length > 0) {
-            arrowObj.waypoints.forEach(point => {
-                ctx.lineTo(point.x, point.y);
-            });
-        }
-        ctx.lineTo(endPoint.x, endPoint.y);
+      ctx.moveTo(startPoint.x, startPoint.y);
+      if (arrowObj.waypoints && arrowObj.waypoints.length) {
+        arrowObj.waypoints.forEach(pt => ctx.lineTo(pt.x, pt.y));
+      }
+      ctx.lineTo(endPoint.x, endPoint.y);
     }
     
     ctx.stroke();
-
-    // Draw the arrowhead using the final segment
-    let finalFromX = arrowObj.waypoints && arrowObj.waypoints.length > 0 
-        ? arrowObj.waypoints[arrowObj.waypoints.length - 1].x 
-        : startPoint.x;
-    let finalFromY = arrowObj.waypoints && arrowObj.waypoints.length > 0 
-        ? arrowObj.waypoints[arrowObj.waypoints.length - 1].y 
-        : startPoint.y;
-    drawArrowhead(ctx, finalFromX, finalFromY, endPoint.x, endPoint.y, arrowObj.color);
-
-    // Draw waypoint handles if the arrow is selected
+  
+    // Optionally, draw arrowhead
+    drawArrowhead(ctx, 
+      (arrowObj.waypoints && arrowObj.waypoints.length) ? arrowObj.waypoints[arrowObj.waypoints.length - 1].x : startPoint.x,
+      (arrowObj.waypoints && arrowObj.waypoints.length) ? arrowObj.waypoints[arrowObj.waypoints.length - 1].y : startPoint.y,
+      endPoint.x, endPoint.y,
+      arrowObj.color
+    );
+    
+    // Draw waypoint handles (if the arrow is selected)
     if (selectedArrow === arrowObj) {
-        drawWaypointHandles(ctx, arrowObj);
+      drawWaypointHandles(ctx, arrowObj);
     }
     
     ctx.restore();
@@ -1126,7 +1105,8 @@ function drawArrowhead(ctx, fromX, fromY, toX, toY, color = "#000000") {
 // --- MODIFIED: Combined start/stop and export into a single function ---
 function exportAnimatedGif() {
   exportingGif = true;
-  exportDashOffset = -dashOffset;
+  // Initialize exportDashOffset in the same direction as dashOffset
+  exportDashOffset = dashOffset; 
 
   console.log("Initializing GIF recorder and starting export...");
   let gif = new GIF({
@@ -1153,7 +1133,7 @@ function exportAnimatedGif() {
     exportingGif = false;
   });
 
-  // Find all animated GIFs and their total cycle times
+  // Calculate cycle timing as before...
   let longestCycle = 0;
   let shortestDelay = Infinity;
   let hasAnimatedContent = false;
@@ -1171,24 +1151,22 @@ function exportAnimatedGif() {
     }
     if (shape.isAnimated) {
       hasAnimatedContent = true;
-      longestCycle = Math.max(longestCycle, 500); // Animated borders cycle
+      longestCycle = Math.max(longestCycle, 500);
       shortestDelay = Math.min(shortestDelay, 50);
     }
   });
 
-  // If no animations found, use default values
   if (!hasAnimatedContent) {
     longestCycle = 500;
     shortestDelay = 50;
   }
 
-  // Ensure we have reasonable values
-  shortestDelay = Math.max(20, Math.min(shortestDelay, 100)); // Between 20ms and 100ms
+  shortestDelay = Math.max(20, Math.min(shortestDelay, 100));
   const frameDelay = shortestDelay;
   const numFrames = Math.ceil(longestCycle / frameDelay);
 
   console.log(`Recording ${numFrames} frames with ${frameDelay}ms delay (cycle: ${longestCycle}ms)`);
-  
+
   let frameCount = 0;
   let lastCapture = 0;
 
@@ -1199,7 +1177,6 @@ function exportAnimatedGif() {
       return;
     }
 
-    // Only capture frame if enough time has passed
     if (timestamp - lastCapture >= frameDelay) {
       gif.addFrame(canvas, { 
         copy: true, 
@@ -1207,13 +1184,13 @@ function exportAnimatedGif() {
       });
       lastCapture = timestamp;
       frameCount++;
-      exportDashOffset -= 2;
+      // Update exportDashOffset in the same positive direction as dashOffset
+      exportDashOffset += 2;
     }
 
     requestAnimationFrame(captureFrame);
   }
 
-  // Start capture on next animation frame
   requestAnimationFrame(captureFrame);
 }
 
