@@ -1304,12 +1304,9 @@ function getHandleIndexAtPos(shape, mouseX, mouseY) {
 // --- ADD: Actual resize logic depending on which handle is grabbed ---
 function resizeShape(shape, handleIndex, mouseX, mouseY) {
   const { x, y, width, height } = shape;
-  const newX = x;
-  const newY = y;
   let newWidth = width;
   let newHeight = height;
 
-  // handleIndex in [0..3] for corners (or more if you included edges)
   switch (handleIndex) {
     case 0: // top-left corner
       newWidth = width + (x - mouseX);
@@ -1331,12 +1328,16 @@ function resizeShape(shape, handleIndex, mouseX, mouseY) {
       newWidth = mouseX - x;
       newHeight = mouseY - y;
       break;
-    // (If you added mid-edge handles, handle them here)
   }
 
-  // Enforce minimum size values if desired:
+  // Enforce minimum size values.
   shape.width = Math.max(newWidth, 20);
   shape.height = Math.max(newHeight, 20);
+  
+  // Invalidate the offscreen cache.
+  if (typeof shape.markDirty === "function") {
+    shape.markDirty();
+  }
 }
 
 // --- ADD: Draw resize handles if a shape is selected ---
