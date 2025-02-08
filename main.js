@@ -557,8 +557,7 @@ canvas.addEventListener("mousedown", (e) => {
     const shapeText = prompt("Enter text for the rectangle:", "Shape");
     if (shapeText !== null) {
       const newShape = new Shape(x - 50, y - 25, 100, 50, shapeText);
-      shapes.push(newShape);
-      requestRender();
+      historyManager.execute(new AddShapeCommand(newShape));
     }
   } else if (currentTool === "arrow") {
     const clickedShape = findShapeUnderMouse(x, y);
@@ -576,7 +575,7 @@ canvas.addEventListener("mousedown", (e) => {
       const fontSize = parseInt(fontSizeSelect.value) || 14;
       const fontFamily = fontFamilySelect.value || "Arial";
       const newTextShape = new TextShape(x, y, shapeText, fontSize, fontFamily);
-      shapes.push(newTextShape);
+      historyManager.execute(new AddShapeCommand(newTextShape));
       requestRender();
     }
   }
@@ -1498,16 +1497,24 @@ document.addEventListener("keydown", (e) => {
       return;
     }
     if (selectedShape) {
-      removeShapeById(selectedShape.id);
+      historyManager.execute(new DeleteShapeCommand(selectedShape));
       selectedShape = null;
     } else if (selectedArrow) {
-      // Check if the arrow is a free arrow or attached to shapes
-      if (selectedArrow.fromId !== undefined) {
-        arrows = arrows.filter(arrow => arrow !== selectedArrow);
-      } else {
-        arrows = arrows.filter(arrow => arrow !== selectedArrow);
-      }
+      historyManager.execute(new DeleteArrowCommand(selectedArrow));
       selectedArrow = null;
+    }
+    e.preventDefault();
+  }
+  
+  // Keep the existing Ctrl+Z and Ctrl+Y handlers
+  if (document.activeElement !== shapeEditorInput) {
+    if (e.ctrlKey && e.key === 'z') {
+      e.preventDefault();
+      historyManager.undo();
+    }
+    if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+      e.preventDefault();
+      historyManager.redo();
     }
   }
 });
@@ -1612,14 +1619,10 @@ if (contextSendBack) {
 if (contextDelete) {
     contextDelete.addEventListener("click", () => {
         if (selectedShape) {
-            removeShapeById(selectedShape.id);
+            historyManager.execute(new DeleteShapeCommand(selectedShape));
             selectedShape = null;
         } else if (selectedArrow) {
-            if (selectedArrow.fromId !== undefined) {
-                arrows = arrows.filter(arrow => arrow !== selectedArrow);
-            } else {
-                arrows = arrows.filter(arrow => arrow !== selectedArrow);
-            }
+            historyManager.execute(new DeleteArrowCommand(selectedArrow));
             selectedArrow = null;
         }
         contextMenu.style.display = "none";
@@ -1847,6 +1850,7 @@ function saveDiagram() {
 
 // 4) Ask the user for a JSON file from disk, then re-import shapes/arrows
 function loadDiagramFromFile() {
+  historyManager.clear();
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.accept = "application/json";
@@ -1860,6 +1864,7 @@ function loadDiagramFromFile() {
       try {
         const jsonText = evt.target.result;
         importDiagram(jsonText);
+        historyManager.clear(); // Clear history when a new diagram is loaded.
       } catch (error) {
         console.error("Error reading JSON:", error);
       }
@@ -1867,7 +1872,7 @@ function loadDiagramFromFile() {
     reader.readAsText(file);
   };
 
-  // Programmatically click the <input> to open the file picker dialog
+  // Open the file picker dialog.
   fileInput.click();
 }
 
@@ -2257,6 +2262,11 @@ opacityRange.addEventListener("input", (e) => {
 // Add this code near your other event listeners (e.g., after the drag/drop listeners)
 // Paste event for images from the clipboard
 document.addEventListener("paste", (e) => {
+  // Only handle paste if we're not in a text input
+  if (document.activeElement === shapeEditorInput) {
+    return;
+  }
+
   const clipboardData = e.clipboardData;
   if (!clipboardData) return;
   
@@ -2271,17 +2281,20 @@ document.addEventListener("paste", (e) => {
         reader.onload = function(evt) {
           const img = new Image();
           img.onload = function() {
-            // Calculate position to place the image at the center of the canvas
-            const x = canvas.width / 2 - img.width / 2;
-            const y = canvas.height / 2 - img.height / 2;
-            // Create a new ImageShape and add to shapes
+            // Calculate position to place the image at the center of the viewport
+            const rect = canvas.getBoundingClientRect();
+            const scale = parseFloat(canvas.style.transform.match(/scale\((.*?)\)/)?.[1] || 1);
+            const x = (rect.width / 2 - img.width / 2) / scale;
+            const y = (rect.height / 2 - img.height / 2) / scale;
+            
+            // Create a new ImageShape and add using history manager
             const imageShape = new ImageShape(x, y, img.width, img.height, img);
-            shapes.push(imageShape);
+            historyManager.execute(new AddShapeCommand(imageShape));
+            requestRender();
           };
           img.src = evt.target.result;
         };
         reader.readAsDataURL(blob);
-        // Only paste the first found image
         break;
       }
     }
@@ -2682,4 +2695,332 @@ function getArrowPoints(arrow) {
   
   return points;
 }
+
+// ============= UNDO/REDO SYSTEM =============
+
+class HistoryManager {
+  constructor() {
+    this.undoStack = [];
+    this.redoStack = [];
+    this.maxStackSize = 50; // Limit stack size to prevent memory issues
+  }
+
+  execute(command) {
+    command.execute();
+    this.undoStack.push(command);
+    this.redoStack = []; // Clear redo stack when new action is performed
+    
+    // Trim undo stack if it exceeds max size
+    if (this.undoStack.length > this.maxStackSize) {
+      this.undoStack.shift();
+    }
+    
+    // Update UI buttons
+    this.updateButtonStates();
+  }
+
+  undo() {
+    if (this.undoStack.length === 0) return;
+    
+    const command = this.undoStack.pop();
+    command.undo();
+    this.redoStack.push(command);
+    
+    this.updateButtonStates();
+  }
+
+  redo() {
+    if (this.redoStack.length === 0) return;
+    
+    const command = this.redoStack.pop();
+    command.execute();
+    this.undoStack.push(command);
+    
+    this.updateButtonStates();
+  }
+
+  clear() {
+    this.undoStack = [];
+    this.redoStack = [];
+    this.updateButtonStates();
+  }
+
+  updateButtonStates() {
+    // Update UI button states
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    
+    if (undoBtn) undoBtn.disabled = this.undoStack.length === 0;
+    if (redoBtn) redoBtn.disabled = this.redoStack.length === 0;
+  }
+}
+
+// Command base class
+class Command {
+  execute() { throw new Error('execute() must be implemented'); }
+  undo() { throw new Error('undo() must be implemented'); }
+}
+
+// Add Shape Command
+class AddShapeCommand extends Command {
+  constructor(shape) {
+    super();
+    this.shape = shape;
+  }
+
+  execute() {
+    shapes.push(this.shape);
+    requestRender();
+  }
+
+  undo() {
+    const index = shapes.indexOf(this.shape);
+    if (index !== -1) {
+      shapes.splice(index, 1);
+      if (selectedShape === this.shape) {
+        selectedShape = null;
+      }
+    }
+    requestRender();
+  }
+}
+
+// Delete Shape Command
+class DeleteShapeCommand extends Command {
+  constructor(shape) {
+    super();
+    this.shape = shape;
+    this.affectedArrows = []; // Store arrows that connect to this shape
+  }
+
+  execute() {
+    // Store affected arrows before deletion
+    this.affectedArrows = arrows.filter(
+      arrow => arrow.fromId === this.shape.id || arrow.toId === this.shape.id
+    );
+    
+    // Remove shape and connected arrows
+    const index = shapes.indexOf(this.shape);
+    if (index !== -1) {
+      shapes.splice(index, 1);
+      arrows = arrows.filter(
+        arrow => arrow.fromId !== this.shape.id && arrow.toId !== this.shape.id
+      );
+      if (selectedShape === this.shape) {
+        selectedShape = null;
+      }
+    }
+    requestRender();
+  }
+
+  undo() {
+    shapes.push(this.shape);
+    arrows.push(...this.affectedArrows);
+    requestRender();
+  }
+}
+
+// Move Shape Command
+class MoveShapeCommand extends Command {
+  constructor(shape, oldX, oldY, newX, newY) {
+    super();
+    this.shape = shape;
+    this.oldX = oldX;
+    this.oldY = oldY;
+    this.newX = newX;
+    this.newY = newY;
+  }
+
+  execute() {
+    this.shape.x = this.newX;
+    this.shape.y = this.newY;
+    requestRender();
+  }
+
+  undo() {
+    this.shape.x = this.oldX;
+    this.shape.y = this.oldY;
+    requestRender();
+  }
+}
+
+// Add Arrow Command
+class AddArrowCommand extends Command {
+  constructor(arrow) {
+    super();
+    this.arrow = arrow;
+  }
+
+  execute() {
+    arrows.push(this.arrow);
+    requestRender();
+  }
+
+  undo() {
+    const index = arrows.indexOf(this.arrow);
+    if (index !== -1) {
+      arrows.splice(index, 1);
+      if (selectedArrow === this.arrow) {
+        selectedArrow = null;
+      }
+    }
+    requestRender();
+  }
+}
+
+// Delete Arrow Command
+class DeleteArrowCommand extends Command {
+  constructor(arrow) {
+    super();
+    this.arrow = arrow;
+  }
+
+  execute() {
+    const index = arrows.indexOf(this.arrow);
+    if (index !== -1) {
+      arrows.splice(index, 1);
+      if (selectedArrow === this.arrow) {
+        selectedArrow = null;
+      }
+    }
+    requestRender();
+  }
+
+  undo() {
+    arrows.push(this.arrow);
+    requestRender();
+  }
+}
+
+// Modify Text Command
+class ModifyTextCommand extends Command {
+  constructor(shape, oldText, newText) {
+    super();
+    this.shape = shape;
+    this.oldText = oldText;
+    this.newText = newText;
+  }
+
+  execute() {
+    this.shape.text = this.newText;
+    if (this.shape instanceof TextShape) {
+      // Recalculate bounds for TextShape
+      const tempCtx = document.createElement("canvas").getContext("2d");
+      tempCtx.font = `${this.shape.fontSize}px ${this.shape.fontFamily}`;
+      const metrics = tempCtx.measureText(this.shape.text);
+      this.shape.width = metrics.width;
+    }
+    requestRender();
+  }
+
+  undo() {
+    this.shape.text = this.oldText;
+    if (this.shape instanceof TextShape) {
+      // Recalculate bounds for TextShape
+      const tempCtx = document.createElement("canvas").getContext("2d");
+      tempCtx.font = `${this.shape.fontSize}px ${this.shape.fontFamily}`;
+      const metrics = tempCtx.measureText(this.shape.text);
+      this.shape.width = metrics.width;
+    }
+    requestRender();
+  }
+}
+
+// Create history manager instance
+const historyManager = new HistoryManager();
+
+// Add keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  // Check if we're editing text
+  if (document.activeElement === shapeEditorInput) {
+    return;
+  }
+
+  // Undo: Ctrl+Z
+  if (e.ctrlKey && e.key === 'z') {
+    e.preventDefault();
+    historyManager.undo();
+  }
+  
+  // Redo: Ctrl+Y or Ctrl+Shift+Z
+  if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+    e.preventDefault();
+    historyManager.redo();
+  }
+});
+
+// Update existing code to use commands
+
+// Modify shape creation to use AddShapeCommand
+function createShape(x, y, text) {
+  const newShape = new Shape(x - 50, y - 25, 100, 50, text);
+  historyManager.execute(new AddShapeCommand(newShape));
+}
+
+// Modify text updates to use ModifyTextCommand
+function updateShapeText(shape, newText) {
+  historyManager.execute(new ModifyTextCommand(shape, shape.text, newText));
+}
+
+// Modify shape deletion to use DeleteShapeCommand
+function deleteShape(shape) {
+  historyManager.execute(new DeleteShapeCommand(shape));
+}
+
+// Add to mouseup event for shape movement
+canvas.addEventListener("mouseup", (e) => {
+  if (draggingShape) {
+    // Record the move command if the shape actually moved
+    if (dragStartX !== draggingShape.x || dragStartY !== draggingShape.y) {
+      historyManager.execute(
+        new MoveShapeCommand(
+          draggingShape,
+          dragStartX,
+          dragStartY,
+          draggingShape.x,
+          draggingShape.y
+        )
+      );
+    }
+    draggingShape = null;
+  }
+  // ... rest of existing mouseup code ...
+});
+
+// Clear history when loading new diagram
+
+
+// Wait for DOM to be fully loaded
+document.addEventListener('DOMContentLoaded', () => {
+    // Get references to the undo/redo buttons
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+
+    // Add click listeners
+    if (undoBtn) {
+        undoBtn.addEventListener('click', () => {
+            historyManager.undo();
+        });
+    } else {
+        console.error('Undo button not found in DOM');
+    }
+
+    if (redoBtn) {
+        redoBtn.addEventListener('click', () => {
+            historyManager.redo();
+        });
+    } else {
+        console.error('Redo button not found in DOM');
+    }
+});
+
+// Also, we need to modify some existing event handlers to use the history manager.
+// For example, in your rectangle creation handler:
+rectBtn.addEventListener("click", () => {
+    currentTool = "rect";
+    clearEditor();
+});
+
+
+// ... rest of mousedown handling ...
 
