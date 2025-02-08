@@ -455,24 +455,24 @@ let draggedHandle = null;           // 'start' or 'end' to identify which endpoi
 canvas.addEventListener("mousedown", (e) => {
   const { x, y } = getCanvasMousePos(e);
 
-  // Add null check for selectedArrow before accessing waypoints
+  // If a waypoint handle is detected in an arrow, handle that first.
   if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length > 0) {
     for (let i = 0; i < selectedArrow.waypoints.length; i++) {
       const point = selectedArrow.waypoints[i];
       if (isPointNearPoint(x, y, point.x, point.y, ARROW_HANDLE_SIZE)) {
         selectedWaypointIndex = i;
+        requestRender();
         return;
       }
     }
   }
-
-  // *** Existing mousedown logic begins here ***
 
   // If we're in free arrow drawing mode
   if (currentTool === "freeArrow") {
     isDrawingFreeArrow = true;
     freeArrowStart = { x, y };
     currentFreeArrowPos = { x, y };
+    requestRender();
     return;
   }
 
@@ -481,11 +481,13 @@ canvas.addEventListener("mousedown", (e) => {
     if (isPointNearPoint(x, y, selectedArrow.fromX, selectedArrow.fromY, ARROW_HANDLE_SIZE)) {
       isDraggingArrowHandle = true;
       draggedHandle = 'start';
+      requestRender();
       return;
     }
     if (isPointNearPoint(x, y, selectedArrow.toX, selectedArrow.toY, ARROW_HANDLE_SIZE)) {
       isDraggingArrowHandle = true;
       draggedHandle = 'end';
+      requestRender();
       return;
     }
   }
@@ -498,6 +500,7 @@ canvas.addEventListener("mousedown", (e) => {
     isDraggingArrow = true;
     dragStartX = x;
     dragStartY = y;
+    requestRender();
     return;
   }
 
@@ -507,6 +510,7 @@ canvas.addEventListener("mousedown", (e) => {
     if (handleIndex !== -1) {
       isResizing = true;
       resizeHandleIndex = handleIndex;
+      requestRender();
       return;
     }
   }
@@ -519,14 +523,8 @@ canvas.addEventListener("mousedown", (e) => {
       draggingShape = clickedShape;
       dragOffsetX = x - clickedShape.x;
       dragOffsetY = y - clickedShape.y;
-
-      // Deselect arrow if shape is selected
-      selectedArrow = null;
-      
-      // Update the opacity slider to match the selected shape's opacity.
+      // Update UI controls if needed.
       opacityRange.value = selectedShape.opacity;
-
-      // Update animated border button state.
       if (selectedShape.isAnimated) {
         animatedBorderBtn.textContent = "On";
         isAnimatedOn = true;
@@ -534,6 +532,7 @@ canvas.addEventListener("mousedown", (e) => {
         animatedBorderBtn.textContent = "Off";
         isAnimatedOn = false;
       }
+      requestRender();
     }
   } else {
     // If no shape was clicked, try to select an arrow
@@ -541,16 +540,16 @@ canvas.addEventListener("mousedown", (e) => {
     if (clickedArrow) {
       selectedArrow = clickedArrow;
       selectedShape = null;
-      // Reset opacity slider because no shape is selected.
       opacityRange.value = 1;
+      requestRender();
     } else {
       // Empty space => deselect both shape and arrow
       selectedShape = null;
       selectedArrow = null;
-      // Reset opacity slider to default (1)
       opacityRange.value = 1;
       animatedBorderBtn.textContent = "Off";
       isAnimatedOn = false;
+      requestRender();
     }
   }
 
@@ -559,14 +558,15 @@ canvas.addEventListener("mousedown", (e) => {
     if (shapeText !== null) {
       const newShape = new Shape(x - 50, y - 25, 100, 50, shapeText);
       shapes.push(newShape);
+      requestRender();
     }
   } else if (currentTool === "arrow") {
-    // Start drawing an arrow
     const clickedShape = findShapeUnderMouse(x, y);
     if (clickedShape) {
       isDrawingLine = true;
       arrowStartShape = clickedShape;
       arrowEndPos = { x, y };
+      requestRender();
     }
   }
 
@@ -577,6 +577,7 @@ canvas.addEventListener("mousedown", (e) => {
       const fontFamily = fontFamilySelect.value || "Arial";
       const newTextShape = new TextShape(x, y, shapeText, fontSize, fontFamily);
       shapes.push(newTextShape);
+      requestRender();
     }
   }
 });
@@ -587,45 +588,43 @@ canvas.addEventListener("mousemove", (e) => {
 
   if (isDrawingFreeArrow && freeArrowStart) {
     currentFreeArrowPos = { x, y };
+    requestRender();
     return;
   }
 
   if (isResizing && selectedShape) {
-    // We're dragging a handle to resize the selected shape
     resizeShape(selectedShape, resizeHandleIndex, x, y);
-    return; // no further dragging logic
+    requestRender();
+    return;
   }
 
   if (draggingShape) {
-    // Move the shape
     draggingShape.x = x - dragOffsetX;
     draggingShape.y = y - dragOffsetY;
+    requestRender();
   } 
   else if (isDrawingLine) {
-    // Update the "rubber band" end position
     arrowEndPos.x = x;
     arrowEndPos.y = y;
+    requestRender();
   }
 
   if (isDraggingArrow && selectedArrow && selectedArrow.fromId === undefined) {
-    // Only move free arrows (those without fromId)
     const dx = x - dragStartX;
     const dy = y - dragStartY;
     
-    // Update arrow position
     selectedArrow.fromX += dx;
     selectedArrow.fromY += dy;
     selectedArrow.toX += dx;
     selectedArrow.toY += dy;
     
-    // Update drag start position
     dragStartX = x;
     dragStartY = y;
+    requestRender();
     return;
   }
 
   if (isDraggingArrowHandle && selectedArrow) {
-    // Update the appropriate endpoint
     if (draggedHandle === 'start') {
       selectedArrow.fromX = x;
       selectedArrow.fromY = y;
@@ -633,40 +632,42 @@ canvas.addEventListener("mousemove", (e) => {
       selectedArrow.toX = x;
       selectedArrow.toY = y;
     }
+    requestRender();
     return;
   }
 
-  // Add hover detection
+  // Hover detection
   if (!draggingShape && !isDrawingLine && !isDraggingArrow && selectedWaypointIndex === -1) {
-      const arrow = findArrowUnderMouse(x, y);
-      if (arrow !== hoveredArrow) {
-          hoveredArrow = arrow;
-          canvas.style.cursor = arrow ? 'pointer' : 'default';
-      }
+    const arrow = findArrowUnderMouse(x, y);
+    if (arrow !== hoveredArrow) {
+      hoveredArrow = arrow;
+      canvas.style.cursor = arrow ? 'pointer' : 'default';
+      requestRender();
+    }
   }
 });
 
 // Mouseup
 canvas.addEventListener("mouseup", (e) => {
-  // Reset any dragging flags related to arrow manipulation.
   if (isDraggingWaypoint || isDraggingEndpoint) {
     isDraggingWaypoint = false;
     isDraggingEndpoint = false;
     selectedWaypointIndex = -1;
     draggedHandle = null;
-    return;  // Exit, so no further arrow drag logic applies.
+    requestRender();
+    return;
   }
   
-  // Reset shape-resizing and dragging states
   if (isResizing) {
     isResizing = false;
     resizeHandleIndex = -1;
+    requestRender();
   }
   if (draggingShape) {
     draggingShape = null;
+    requestRender();
   }
   
-  // Handle arrow-line complete drawing
   if (isDrawingLine) {
     const { x, y } = getCanvasMousePos(e);
     const releasedShape = findShapeUnderMouse(x, y);
@@ -674,16 +675,16 @@ canvas.addEventListener("mouseup", (e) => {
         arrows.push({ 
             fromId: arrowStartShape.id, 
             toId: releasedShape.id,
-            curve: false,  // Add this line
+            curve: false,
             color: arrowColorPicker.value,
             lineWidth: parseInt(lineThicknessPicker.value) || 2
         });
+        requestRender();
     }
     isDrawingLine = false;
     arrowStartShape = null;
   }
   
-  // Handle free arrow drawing completion
   if (isDrawingFreeArrow && freeArrowStart) {
     const { x, y } = getCanvasMousePos(e);
     const newArrow = {
@@ -693,7 +694,7 @@ canvas.addEventListener("mouseup", (e) => {
         fromY: freeArrowStart.y,
         toX: x,
         toY: y,
-        curve: false,  // Add this line
+        curve: false,
         color: arrowColorPicker.value,
         lineWidth: parseInt(lineThicknessPicker.value) || 2
     };
@@ -701,21 +702,82 @@ canvas.addEventListener("mouseup", (e) => {
     isDrawingFreeArrow = false;
     freeArrowStart = null;
     currentFreeArrowPos = null;
+    requestRender();
     return;
   }
   
-  // Clear arrow handle dragging state
   if (isDraggingArrowHandle) {
     isDraggingArrowHandle = false;
     draggedHandle = null;
+    requestRender();
   }
   
-  // Clear waypoint dragging state
   selectedWaypointIndex = -1;
   
   if (isDraggingArrow) {
     isDraggingArrow = false;
+    requestRender();
     return;
+  }
+});
+
+// File Drop Listener
+canvas.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const dropX = e.clientX - rect.left;
+  const dropY = e.clientY - rect.top;
+
+  const files = e.dataTransfer.files;
+  if (!files || files.length === 0) return;
+
+  const file = files[0];
+
+  // Only accept image files
+  if (!file.type.startsWith("image/")) {
+    console.log("Dropped file is not an image.");
+    return;
+  }
+
+  if (file.type === "image/gif") {
+    const fileReaderArrayBuffer = new FileReader();
+    fileReaderArrayBuffer.onload = (evt) => {
+      const buffer = evt.target.result;
+      try {
+        const lib = (typeof window.gifuct !== "undefined" ? window.gifuct : (typeof gifuct !== "undefined" ? gifuct : null));
+        if (!lib) {
+          console.error("gifuct library is not loaded.");
+          return;
+        }
+        const gifData = lib.parseGIF(buffer);
+        const frames = lib.decompressFrames(gifData, true);
+
+        const fileReaderDataURL = new FileReader();
+        fileReaderDataURL.onload = (evt) => {
+          const dataUrl = evt.target.result;
+          const animatedGifShape = new AnimatedGifShape(dropX, dropY, frames, 1);
+          animatedGifShape.gifSrc = dataUrl;
+          shapes.push(animatedGifShape);
+          requestRender();
+        };
+        fileReaderDataURL.readAsDataURL(file);
+      } catch (error) {
+        console.error("Error decoding animated GIF:", error);
+      }
+    };
+    fileReaderArrayBuffer.readAsArrayBuffer(file);
+  } else {
+    const fileReader = new FileReader();
+    fileReader.onload = (evt) => {
+      const img = new Image();
+      img.onload = () => {
+        const imageShape = new ImageShape(dropX, dropY, img.width, img.height, img);
+        shapes.push(imageShape);
+        requestRender();
+      };
+      img.src = evt.target.result;
+    };
+    fileReader.readAsDataURL(file);
   }
 });
 
@@ -921,76 +983,143 @@ function getEdgeIntersection(shape, targetX, targetY) {
 /////////////////////////////////////
 let canvasBgColor = "#ffffff";
 
-// The animate() function:
-function animate() {
-    // Clear the canvas
-    ctx.fillStyle = canvasBgColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+// ======= New Rendering Loop Optimizations =======
 
-    // Draw shapes
-    shapes.forEach((shape) => {
-      shape.draw(ctx);
-    });
-    
-    // Draw both connected and free arrows
-    arrows.forEach((arrow) => {
-      if (arrow.fromId !== undefined) {
-          const fromShape = shapes.find(s => s.id === arrow.fromId);
-          const toShape = shapes.find(s => s.id === arrow.toId);
-          if (fromShape && toShape) {
-              let startTargetX = (arrow.waypoints && arrow.waypoints.length > 0)
-                ? arrow.waypoints[0].x 
-                : toShape.x + toShape.width / 2;
-              let startTargetY = (arrow.waypoints && arrow.waypoints.length > 0)
-                ? arrow.waypoints[0].y 
-                : toShape.y + toShape.height / 2;
-  
-              let endTargetX = (arrow.waypoints && arrow.waypoints.length > 0)
-                ? arrow.waypoints[arrow.waypoints.length - 1].x 
-                : fromShape.x + fromShape.width / 2;
-              let endTargetY = (arrow.waypoints && arrow.waypoints.length > 0)
-                ? arrow.waypoints[arrow.waypoints.length - 1].y 
-                : fromShape.y + fromShape.height / 2;
-  
-              const fromPt = getEdgeIntersection(fromShape, startTargetX, startTargetY);
-              const toPt = getEdgeIntersection(toShape, endTargetX, endTargetY);
-  
-              drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow);
-          }
-      } else {
-          // Free arrow drawing
-          drawArrow(ctx, arrow.fromX, arrow.fromY, arrow.toX, arrow.toY, arrow);
-      }
-    });
-    
-    // Draw temporary arrow lines (if any)
-    if (isDrawingLine && arrowStartShape) {
-      const fromPt = getEdgeIntersection(arrowStartShape, arrowEndPos.x, arrowEndPos.y);
-      drawTempLine(ctx, fromPt.x, fromPt.y, arrowEndPos.x, arrowEndPos.y);
-    }
-    
-    if (isDrawingFreeArrow && freeArrowStart && currentFreeArrowPos) {
-      drawArrow(ctx, freeArrowStart.x, freeArrowStart.y, currentFreeArrowPos.x, currentFreeArrowPos.y, {
-        color: arrowColorPicker.value,
-        lineWidth: parseInt(lineThicknessPicker.value) || 2
-      });
-    }
+// Global flag for controlling continuous animation.
+// Set to true to ensure the diagram is re-rendered continuously for animations
+// (e.g. arrow dash offsets update, animated shapes, etc.).
+// Set to false if you only want re-rendering on explicit user interactions.
+const continuousAnimationEnabled = true;
 
-    // Draw additional handles (if any)
-    if (selectedShape) {
-      drawResizeHandles(ctx, selectedShape);
-    }
-    if (selectedArrow) {
-      drawArrowSelectionHandles(ctx, selectedArrow);
-    }
-    
-    // Update dash offset for canvas animation only when not exporting
-    if (!exportingGif) {
-      dashOffset += 0.5; // Adjust this for desired speed
-    }
-  
+// Global flags for controlling when to render:
+let needsRender = true;
+let renderScheduled = false;
+
+// Call this function whenever a state change or user interaction occurs that
+// should trigger a redraw.
+function requestRender() {
+  needsRender = true;
+  if (!renderScheduled) {
+    renderScheduled = true;
     requestAnimationFrame(animate);
+  }
 }
+
+// This function tests whether something dynamic is actively occurring on the canvas.
+// Adding the continuousAnimationEnabled flag ensures that even if no user interaction
+// is occurring, the animation will be updated continuously.
+function shouldAnimateContinuously() {
+  if (continuousAnimationEnabled) return true;
+  
+  // If the user is drawing a line or free arrow, we need continuous feedback.
+  if (isDrawingLine || isDrawingFreeArrow) return true;
+  
+  // If any shape is flagged as animated, we continue updating.
+  for (let i = 0; i < shapes.length; i++) {
+    if (shapes[i].isAnimated) return true;
+  }
+  
+  // If a waypoint is being dragged, update continuously.
+  if (selectedWaypointIndex !== -1) return true;
+  
+  // If an arrow is selected or hovered, we might be animating dashes.
+  if (selectedArrow || hoveredArrow) return true;
+  
+  return false;
+}
+
+// ===== Modified animate() Function =====
+function animate() {
+  // We are now processing an animation frame.
+  renderScheduled = false;
+  
+  // If nothing has changed and no interactive animation is active, skip drawing.
+  if (!needsRender && !shouldAnimateContinuously()) {
+    return;
+  }
+  
+  // Clear the "dirty" flag—assume we are rendering now.
+  needsRender = false;
+  
+  // --- Begin Drawing Code (unchanged from before) ---
+  
+  // Clear the canvas.
+  ctx.fillStyle = canvasBgColor;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw shapes.
+  shapes.forEach((shape) => {
+    shape.draw(ctx);
+  });
+  
+  // Draw both connected and free arrows.
+  arrows.forEach((arrow) => {
+    if (arrow.fromId !== undefined) {
+      const fromShape = shapes.find(s => s.id === arrow.fromId);
+      const toShape = shapes.find(s => s.id === arrow.toId);
+      if (fromShape && toShape) {
+        let startTargetX = (arrow.waypoints && arrow.waypoints.length > 0)
+          ? arrow.waypoints[0].x 
+          : toShape.x + toShape.width / 2;
+        let startTargetY = (arrow.waypoints && arrow.waypoints.length > 0)
+          ? arrow.waypoints[0].y 
+          : toShape.y + toShape.height / 2;
+  
+        let endTargetX = (arrow.waypoints && arrow.waypoints.length > 0)
+          ? arrow.waypoints[arrow.waypoints.length - 1].x 
+          : fromShape.x + fromShape.width / 2;
+        let endTargetY = (arrow.waypoints && arrow.waypoints.length > 0)
+          ? arrow.waypoints[arrow.waypoints.length - 1].y 
+          : fromShape.y + fromShape.height / 2;
+  
+        const fromPt = getEdgeIntersection(fromShape, startTargetX, startTargetY);
+        const toPt = getEdgeIntersection(toShape, endTargetX, endTargetY);
+  
+        drawArrow(ctx, fromPt.x, fromPt.y, toPt.x, toPt.y, arrow);
+      }
+    } else {
+      // Free arrow drawing.
+      drawArrow(ctx, arrow.fromX, arrow.fromY, arrow.toX, arrow.toY, arrow);
+    }
+  });
+  
+  // Draw temporary arrow lines (if any).
+  if (isDrawingLine && arrowStartShape) {
+    const fromPt = getEdgeIntersection(arrowStartShape, arrowEndPos.x, arrowEndPos.y);
+    drawTempLine(ctx, fromPt.x, fromPt.y, arrowEndPos.x, arrowEndPos.y);
+  }
+  
+  if (isDrawingFreeArrow && freeArrowStart && currentFreeArrowPos) {
+    drawArrow(ctx, freeArrowStart.x, freeArrowStart.y, currentFreeArrowPos.x, currentFreeArrowPos.y, {
+      color: arrowColorPicker.value,
+      lineWidth: parseInt(lineThicknessPicker.value) || 2
+    });
+  }
+  
+  // Draw additional handles (for selected shape or arrow)
+  if (selectedShape) {
+    drawResizeHandles(ctx, selectedShape);
+  }
+  if (selectedArrow) {
+    drawArrowSelectionHandles(ctx, selectedArrow);
+  }
+  
+  // Update dash offset for arrow animations if not exporting.
+  if (!exportingGif) {
+    dashOffset += 0.5;
+  }
+  
+  // --- End Drawing Code ---
+  
+  // If there is still an active animation (or continuous animations are enabled),
+  // schedule a new frame.
+  if (shouldAnimateContinuously()) {
+    requestRender();
+  }
+}
+
+// Kick off the rendering loop initially.
+requestRender();
 
 // Draw a dotted arrow for a final connection
 function drawArrow(ctx, fromX, fromY, toX, toY, arrowObj) {
@@ -1238,6 +1367,7 @@ canvas.addEventListener("drop", (e) => {
           // IMPORTANT: assign gifSrc so that your export logic can save it.
           animatedGifShape.gifSrc = dataUrl;
           shapes.push(animatedGifShape);
+          requestRender();
         };
         fileReaderDataURL.readAsDataURL(file);
       } catch (error) {
@@ -1253,15 +1383,13 @@ canvas.addEventListener("drop", (e) => {
       img.onload = () => {
         const imageShape = new ImageShape(dropX, dropY, img.width, img.height, img);
         shapes.push(imageShape);
+        requestRender();
       };
       img.src = evt.target.result;
     };
     fileReader.readAsDataURL(file);
   }
 });
-
-// Start the animation loop
-animate();
 
 // --- ADD: Function to get position of all resize handles for a shape ---
 // We'll define an array of (x, y) coords (for corners + optionally edges).
