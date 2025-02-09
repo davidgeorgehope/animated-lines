@@ -1029,6 +1029,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("opacityRange").addEventListener("input", e => {
     if (selectedShape) {
       selectedShape.opacity = parseFloat(e.target.value);
+      requestRender();
     }
   });
 
@@ -1223,6 +1224,8 @@ function onCanvasMouseDown(e) {
       draggingShape = clickedShape;
       dragOffsetX = mx - clickedShape.x;
       dragOffsetY = my - clickedShape.y;
+      // Update font controls to match selected shape
+      updateFontControls(clickedShape);
       requestRender();
       return;
     }
@@ -2118,4 +2121,27 @@ function shapeFromSerializable(sd) {
   newShape.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : false;
   newShape.opacity = sd.opacity !== undefined ? sd.opacity : 1;
   return newShape;
+}
+
+// Add this new function to update font controls
+function updateFontControls(shape) {
+  if (!shape) return;
+  
+  if (shape instanceof TextShape || shape instanceof Shape) {
+    // Update font size select
+    if (fontSizeSelect) {
+      fontSizeSelect.value = shape.fontSize || "14";
+    }
+    
+    // Update font family select
+    if (fontFamilySelect) {
+      fontFamilySelect.value = shape.fontFamily || "Arial";
+    }
+
+    // Update opacity range
+    const opacityRange = document.getElementById("opacityRange");
+    if (opacityRange) {
+      opacityRange.value = shape.opacity || 1;
+    }
+  }
 }
