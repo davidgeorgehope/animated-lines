@@ -47,6 +47,26 @@ class CanvasManager {
 /////////////////////////////////////////////////
 let shapeCounter = 0;
 
+// Add this helper function near the top of the file
+function wrapText(ctx, text, maxWidth) {
+  const words = text.split(' ');
+  const lines = [];
+  let currentLine = words[0];
+
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+    const width = ctx.measureText(currentLine + " " + word).width;
+    if (width < maxWidth) {
+      currentLine += " " + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  lines.push(currentLine);
+  return lines;
+}
+
 class Shape {
   constructor(x, y, w, h, text) {
     this.id = shapeCounter++;
@@ -77,6 +97,7 @@ class Shape {
     ctx.globalAlpha = this.opacity;
     ctx.fillStyle = this.fillColor;
     ctx.fillRect(this.x, this.y, this.width, this.height);
+    
     if (this.isAnimated) {
       ctx.setLineDash([6, 4]);
       const effectiveDashOffset = exportingGif ? exportDashOffset : dashOffset;
@@ -85,15 +106,29 @@ class Shape {
       ctx.setLineDash([]);
       ctx.lineDashOffset = 0;
     }
+    
     ctx.strokeStyle = this.color;
     ctx.lineWidth = this.lineWidth;
     ctx.strokeRect(this.x, this.y, this.width, this.height);
+    
+    // Text rendering with word wrap
     ctx.fillStyle = this.textColor;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
-    const metrics = ctx.measureText(this.text);
-    const textX = this.x + (this.width - metrics.width) / 2;
-    const textY = this.y + this.height / 2 + this.fontSize / 3;
-    ctx.fillText(this.text, textX, textY);
+    const padding = 10; // Padding from edges
+    const maxWidth = this.width - (padding * 2);
+    const lines = wrapText(ctx, this.text, maxWidth);
+    
+    const lineHeight = this.fontSize * 1.2;
+    const totalTextHeight = lines.length * lineHeight;
+    let textY = this.y + (this.height - totalTextHeight) / 2 + this.fontSize;
+    
+    lines.forEach(line => {
+      const textWidth = ctx.measureText(line).width;
+      const textX = this.x + (this.width - textWidth) / 2;
+      ctx.fillText(line, textX, textY);
+      textY += lineHeight;
+    });
+    
     ctx.restore();
   }
 
@@ -150,12 +185,29 @@ class TextShape {
     ctx.fillStyle = this.textColor;
     ctx.globalAlpha = this.opacity;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
-    ctx.fillText(this.text, this.x, this.y + this.height);
+    
+    // For TextShape, we'll make the width grow with the content
+    const lines = wrapText(ctx, this.text, this.width);
+    const lineHeight = this.fontSize * 1.2;
+    
+    // Update the shape's height based on number of lines
+    this.height = lines.length * lineHeight;
+    
+    // Draw each line
+    let y = this.y;
+    lines.forEach(line => {
+      ctx.fillText(line, this.x, y + this.fontSize);
+      y += lineHeight;
+    });
+    
     ctx.restore();
   }
 
   containsPoint(px, py) {
-    return px >= this.x && px <= this.x + this.width && py >= this.y && py <= this.y + this.height;
+    return px >= this.x && 
+           px <= this.x + this.width && 
+           py >= this.y && 
+           py <= this.y + this.height;
   }
 
   getCenter() {
