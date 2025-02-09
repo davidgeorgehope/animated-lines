@@ -2249,15 +2249,21 @@ function updateShapeControls(shape) {
     return;
   }
 
-  // Update controls for selected shape
-  if (arrowColorPicker && shape.lastUsedColors) {
-    arrowColorPicker.value = shape.lastUsedColors.line;
-  }
-  if (fillColorPicker && shape.lastUsedColors) {
-    fillColorPicker.value = shape.lastUsedColors.fill;
-  }
-  if (textColorPicker && shape.lastUsedColors) {
-    textColorPicker.value = shape.lastUsedColors.text;
+  // For TextShape, use its textColor property directly.
+  if (shape instanceof TextShape) {
+    if (textColorPicker) {
+      textColorPicker.value = shape.textColor;
+    }
+  } else if (shape.lastUsedColors) {
+    if (arrowColorPicker) {
+      arrowColorPicker.value = shape.lastUsedColors.line;
+    }
+    if (fillColorPicker) {
+      fillColorPicker.value = shape.lastUsedColors.fill;
+    }
+    if (textColorPicker) {
+      textColorPicker.value = shape.lastUsedColors.text;
+    }
   }
 
   // Update font controls
