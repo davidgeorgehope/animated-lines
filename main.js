@@ -451,23 +451,23 @@ let draggedHandle = null;           // 'start' or 'end' to identify which endpoi
 
 // ======== MOUSE EVENTS ========
 
-// Mousedown
+// Combined mousedown event handler for canvas
 canvas.addEventListener("mousedown", (e) => {
   const { x, y } = getCanvasMousePos(e);
 
-  // If a waypoint handle is detected in an arrow, handle that first.
-  if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length > 0) {
+  // 1. Check for dragging a waypoint (if an arrow is selected)
+  if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length) {
     for (let i = 0; i < selectedArrow.waypoints.length; i++) {
       const point = selectedArrow.waypoints[i];
       if (isPointNearPoint(x, y, point.x, point.y, ARROW_HANDLE_SIZE)) {
         selectedWaypointIndex = i;
         requestRender();
-        return;
+        return; // exit early since condition met
       }
     }
   }
-
-  // If we're in free arrow drawing mode
+  
+  // 2. Check if in free arrow drawing mode
   if (currentTool === "freeArrow") {
     isDrawingFreeArrow = true;
     freeArrowStart = { x, y };
@@ -475,8 +475,8 @@ canvas.addEventListener("mousedown", (e) => {
     requestRender();
     return;
   }
-
-  // Check if clicking on an arrow handle (for free arrows)
+  
+  // 3. Check if clicking on a free arrow handle (for dragging endpoints)
   if (selectedArrow && selectedArrow.fromId === undefined) {
     if (isPointNearPoint(x, y, selectedArrow.fromX, selectedArrow.fromY, ARROW_HANDLE_SIZE)) {
       isDraggingArrowHandle = true;
@@ -491,20 +491,21 @@ canvas.addEventListener("mousedown", (e) => {
       return;
     }
   }
-  
-  // (Additional arrow selection or shape selection logic here.)
+
+  // 4. Check for arrow selection if the tool is "select" (this can include dragging the arrow)
   const clickedArrow = findArrowUnderMouse(x, y);
   if (clickedArrow && currentTool === "select") {
     selectedArrow = clickedArrow;
-    selectedShape = null;
+    selectedShape = null; // deselect shape in favor of arrow
+    // Initialize dragging for arrow if needed
     isDraggingArrow = true;
     dragStartX = x;
     dragStartY = y;
     requestRender();
     return;
   }
-
-  // Check if user clicked a resize handle...
+  
+  // 5. Check if clicking on a resize handle (for a selected shape)
   if (selectedShape) {
     const handleIndex = getHandleIndexAtPos(selectedShape, x, y);
     if (handleIndex !== -1) {
@@ -514,8 +515,8 @@ canvas.addEventListener("mousedown", (e) => {
       return;
     }
   }
-
-  // Check if user clicked on a shape
+  
+  // 6. Check if clicking on a shape (for selection or dragging)
   const clickedShape = findShapeUnderMouse(x, y);
   if (clickedShape) {
     if (currentTool === "select") {
@@ -523,53 +524,34 @@ canvas.addEventListener("mousedown", (e) => {
       draggingShape = clickedShape;
       dragOffsetX = x - clickedShape.x;
       dragOffsetY = y - clickedShape.y;
-      // Update UI controls if needed.
-      opacityRange.value = selectedShape.opacity;
-      if (selectedShape.isAnimated) {
-        animatedBorderBtn.textContent = "On";
-        isAnimatedOn = true;
-      } else {
-        animatedBorderBtn.textContent = "Off";
-        isAnimatedOn = false;
-      }
+      // Optionally update UI controls here (like opacity or animation settings)
       requestRender();
+      return;
     }
   } else {
-    // If no shape was clicked, try to select an arrow
-    const clickedArrow = findArrowUnderMouse(x, y);
-    if (clickedArrow) {
-      selectedArrow = clickedArrow;
-      selectedShape = null;
-      opacityRange.value = 1;
-      requestRender();
-    } else {
-      // Empty space => deselect both shape and arrow
-      selectedShape = null;
-      selectedArrow = null;
-      opacityRange.value = 1;
-      animatedBorderBtn.textContent = "Off";
-      isAnimatedOn = false;
-      requestRender();
-    }
+    // 7. Not clicking on any shape or arrow: clear current selection
+    selectedShape = null;
+    selectedArrow = null;
+    requestRender();
   }
-
+  
+  // 8. Additional logic for other tools such as rectangle, arrow, or text creation
   if (currentTool === "rect") {
     const shapeText = prompt("Enter text for the rectangle:", "Shape");
     if (shapeText !== null) {
       const newShape = new Shape(x - 50, y - 25, 100, 50, shapeText);
       historyManager.execute(new AddShapeCommand(newShape));
+      requestRender();
     }
   } else if (currentTool === "arrow") {
-    const clickedShape = findShapeUnderMouse(x, y);
-    if (clickedShape) {
+    const startShape = findShapeUnderMouse(x, y);
+    if (startShape) {
       isDrawingLine = true;
-      arrowStartShape = clickedShape;
+      arrowStartShape = startShape;
       arrowEndPos = { x, y };
       requestRender();
     }
-  }
-
-  if (currentTool === "text") {
+  } else if (currentTool === "text") {
     const shapeText = prompt("Enter your text:", "New Text");
     if (shapeText !== null) {
       const fontSize = parseInt(fontSizeSelect.value) || 14;
@@ -648,6 +630,22 @@ canvas.addEventListener("mousemove", (e) => {
 
 // Mouseup
 canvas.addEventListener("mouseup", (e) => {
+  if (draggingShape) {
+    // Record the move command if the shape actually moved
+    if (dragStartX !== draggingShape.x || dragStartY !== draggingShape.y) {
+      historyManager.execute(
+        new MoveShapeCommand(
+          draggingShape,
+          dragStartX,
+          dragStartY,
+          draggingShape.x,
+          draggingShape.y
+        )
+      );
+    }
+    draggingShape = null;
+  }
+
   if (isDraggingWaypoint || isDraggingEndpoint) {
     isDraggingWaypoint = false;
     isDraggingEndpoint = false;
@@ -717,66 +715,6 @@ canvas.addEventListener("mouseup", (e) => {
     isDraggingArrow = false;
     requestRender();
     return;
-  }
-});
-
-// File Drop Listener
-canvas.addEventListener("drop", (e) => {
-  e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  const dropX = e.clientX - rect.left;
-  const dropY = e.clientY - rect.top;
-
-  const files = e.dataTransfer.files;
-  if (!files || files.length === 0) return;
-
-  const file = files[0];
-
-  // Only accept image files
-  if (!file.type.startsWith("image/")) {
-    console.log("Dropped file is not an image.");
-    return;
-  }
-
-  if (file.type === "image/gif") {
-    const fileReaderArrayBuffer = new FileReader();
-    fileReaderArrayBuffer.onload = (evt) => {
-      const buffer = evt.target.result;
-      try {
-        const lib = (typeof window.gifuct !== "undefined" ? window.gifuct : (typeof gifuct !== "undefined" ? gifuct : null));
-        if (!lib) {
-          console.error("gifuct library is not loaded.");
-          return;
-        }
-        const gifData = lib.parseGIF(buffer);
-        const frames = lib.decompressFrames(gifData, true);
-
-        const fileReaderDataURL = new FileReader();
-        fileReaderDataURL.onload = (evt) => {
-          const dataUrl = evt.target.result;
-          const animatedGifShape = new AnimatedGifShape(dropX, dropY, frames, 1);
-          animatedGifShape.gifSrc = dataUrl;
-          shapes.push(animatedGifShape);
-          requestRender();
-        };
-        fileReaderDataURL.readAsDataURL(file);
-      } catch (error) {
-        console.error("Error decoding animated GIF:", error);
-      }
-    };
-    fileReaderArrayBuffer.readAsArrayBuffer(file);
-  } else {
-    const fileReader = new FileReader();
-    fileReader.onload = (evt) => {
-      const img = new Image();
-      img.onload = () => {
-        const imageShape = new ImageShape(dropX, dropY, img.width, img.height, img);
-        shapes.push(imageShape);
-        requestRender();
-      };
-      img.src = evt.target.result;
-    };
-    fileReader.readAsDataURL(file);
   }
 });
 
@@ -1632,6 +1570,7 @@ if (contextDelete) {
 function updateShapeText(shape, newText) {
   // Update the text in either a rectangle or a TextShape
   shape.text = newText;
+  historyManager.execute(new ModifyTextCommand(shape, shape.text, newText));
 
   // If this is a TextShape, re-measure the bounding box 
   // in case the user typed a longer or shorter string
@@ -2171,26 +2110,7 @@ function drawArrowSelectionHandles(ctx, arrow) {
   ctx.restore();
 }
 
-// ----------------------------------------------------------------------
-// All previous code in main.js (Shape classes, event handlers, etc.) remains below
-// ---------------------------------------------------------------------- 
 
-function init() {
-  // Grab the new text color picker
-  const textColorPicker = document.getElementById("textColorPicker");
-
-  // Listen for user input changes on text color
-  textColorPicker.addEventListener("input", (e) => {
-    if (selectedShape) {
-      // If a shape is selected (regular shape or TextShape)
-      selectedShape.textColor = e.target.value;
-    }
-  });
-}
-
-// Finally, add a small init call somewhere after your variable declarations or 
-// inside a DOMContentLoaded event. For instance:
-document.addEventListener("DOMContentLoaded", init); 
 
 // Add event listeners for the fill color picker
 fillColorPicker.addEventListener("input", (e) => {
@@ -2199,16 +2119,6 @@ fillColorPicker.addEventListener("input", (e) => {
   }
 }); 
 
-/////////////////////////////////////////////
-// 2. Listen for changes in the new color picker
-/////////////////////////////////////////////
-document.addEventListener("DOMContentLoaded", () => {
-    // Existing init code, then:
-    const canvasColorPicker = document.getElementById("canvasColorPicker");
-    canvasColorPicker.addEventListener("input", (e) => {
-        canvasBgColor = e.target.value; // update the global variable
-    });
-}); 
 
 // --- ADD: Listen for changes to the line thickness picker ---
 lineThicknessPicker.addEventListener("input", (e) => {
@@ -2471,14 +2381,6 @@ canvas.addEventListener("mousemove", (e) => {
     
     // ... rest of existing mousemove code ...
 });
-
-// Update mouseup handler
-canvas.addEventListener("mouseup", () => {
-    selectedWaypointIndex = -1;
-    // ... rest of existing mouseup code ...
-});
-
-// Global variables for arrow hovering and waypoint dragging
 
 function getCatmullRomCurvePoints(points, numOfSegments) {
     // Returns an array of interpolated points along the Catmull-Rom spline.
@@ -2949,78 +2851,90 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Update existing code to use commands
-
-// Modify shape creation to use AddShapeCommand
-function createShape(x, y, text) {
-  const newShape = new Shape(x - 50, y - 25, 100, 50, text);
-  historyManager.execute(new AddShapeCommand(newShape));
-}
-
-// Modify text updates to use ModifyTextCommand
-function updateShapeText(shape, newText) {
-  historyManager.execute(new ModifyTextCommand(shape, shape.text, newText));
-}
-
-// Modify shape deletion to use DeleteShapeCommand
-function deleteShape(shape) {
-  historyManager.execute(new DeleteShapeCommand(shape));
-}
-
-// Add to mouseup event for shape movement
-canvas.addEventListener("mouseup", (e) => {
-  if (draggingShape) {
-    // Record the move command if the shape actually moved
-    if (dragStartX !== draggingShape.x || dragStartY !== draggingShape.y) {
-      historyManager.execute(
-        new MoveShapeCommand(
-          draggingShape,
-          dragStartX,
-          dragStartY,
-          draggingShape.x,
-          draggingShape.y
-        )
-      );
-    }
-    draggingShape = null;
-  }
-  // ... rest of existing mouseup code ...
-});
 
 // Clear history when loading new diagram
 
 
-// Wait for DOM to be fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    // Get references to the undo/redo buttons
-    const undoBtn = document.getElementById('undoBtn');
-    const redoBtn = document.getElementById('redoBtn');
 
-    // Add click listeners
+// ... existing code ...
+
+// Single, combined initialization function
+function initializeApplication() {
+
+
+    // Initialize color pickers
+    initializeColorPickers();
+
+    // Initialize undo/redo functionality
+    initializeUndoRedo();
+
+    // Log completion
+    console.log("Application initialization complete.");
+}
+
+// Color picker initialization
+function initializeColorPickers() {
+    // Canvas background color
+    const canvasColorPicker = document.getElementById("canvasColorPicker");
+    if (canvasColorPicker) {
+        canvasColorPicker.addEventListener("input", (e) => {
+            canvasBgColor = e.target.value;
+        });
+    } else {
+        console.warn("Canvas color picker not found");
+    }
+
+    // Text color picker
+    const textColorPicker = document.getElementById("textColorPicker");
+    if (textColorPicker) {
+        textColorPicker.addEventListener("input", (e) => {
+            if (selectedShape) {
+                selectedShape.textColor = e.target.value;
+            }
+        });
+    } else {
+        console.warn("Text color picker not found");
+    }
+
+    // Fill color picker
+    const fillColorPicker = document.getElementById("fillColorPicker");
+    if (fillColorPicker) {
+        fillColorPicker.addEventListener("input", (e) => {
+            if (selectedShape) {
+                selectedShape.fillColor = e.target.value;
+            }
+        });
+    } else {
+        console.warn("Fill color picker not found");
+    }
+}
+
+// Undo/Redo initialization
+function initializeUndoRedo() {
+    const undoBtn = document.getElementById("undoBtn");
+    const redoBtn = document.getElementById("redoBtn");
+
     if (undoBtn) {
-        undoBtn.addEventListener('click', () => {
+        undoBtn.addEventListener("click", () => {
             historyManager.undo();
         });
     } else {
-        console.error('Undo button not found in DOM');
+        console.warn("Undo button not found");
     }
 
     if (redoBtn) {
-        redoBtn.addEventListener('click', () => {
+        redoBtn.addEventListener("click", () => {
             historyManager.redo();
         });
     } else {
-        console.error('Redo button not found in DOM');
+        console.warn("Redo button not found");
     }
-});
+}
 
-// Also, we need to modify some existing event handlers to use the history manager.
-// For example, in your rectangle creation handler:
-rectBtn.addEventListener("click", () => {
-    currentTool = "rect";
-    clearEditor();
-});
+// Single DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', initializeApplication);
+
+// ... rest of existing code ...
 
 
-// ... rest of mousedown handling ...
 
