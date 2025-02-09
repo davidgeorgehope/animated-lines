@@ -48,7 +48,6 @@
       cursor: pointer;
     }
 
-    /* NEW: small style for our selects so they line up with the buttons */
     #toolbar select {
       padding: 4px 8px;
     }
@@ -66,7 +65,6 @@
       border: 1px solid #ccc;
     }
 
-    /* Inline text editor (for double-click on a shape) */
     #shapeEditor {
       position: fixed;
       display: none;
@@ -74,7 +72,6 @@
       padding: 2px;
     }
 
-    /* Basic styling for the context menu */
     #context-menu {
       position: fixed;
       display: none;
@@ -114,12 +111,9 @@
       <button id="toolRect">Create Rectangle</button>
       <button id="toolArrow">Connected Arrow</button>
       <button id="toolFreeArrow">Free Arrow</button>
-      <!--<button id="startGifBtn">Start Recording</button>
-      <button id="stopGifBtn">Stop Recording</button>-->
       <button id="exportGifBtn">Export GIF</button>
       <button id="toolText">Text</button>
 
-      <!-- Updated: Expanded font size dropdown -->
       <select id="fontSizeSelect">
         <option value="8">8px</option>
         <option value="10">10px</option>
@@ -136,7 +130,6 @@
         <option value="64">64px</option>
       </select>
 
-      <!-- Updated: Expanded font family dropdown -->
       <select id="fontFamilySelect">
         <option value="Arial" selected>Arial</option>
         <option value="Helvetica">Helvetica</option>
@@ -156,10 +149,8 @@
         <option value="Brush Script MT">Brush Script MT</option>
       </select>
 
-      <!-- Save/Load buttons -->
       <button id="saveBtn">Save</button>
       <button id="loadBtn">Load</button>
-
     </div>
     <div id="colorSelectionToolbar">
       <label for="arrowColorPicker">Line/Shape Color:</label>
@@ -178,12 +169,10 @@
       <label for="canvasColorPicker">Canvas Color:</label>
       <input type="color" id="canvasColorPicker" value="#ffffff" />
 
-      <!-- New line-thickness picker (the "fifth item") -->
       <br><br>
       <label for="lineThicknessPicker">Line Thickness:</label>
       <input type="number" id="lineThicknessPicker" min="1" max="20" value="2" />
 
-      <!-- Replace with a toggle button for animated border -->
       <br><br>
       <label for="animatedBorderBtn">Animated Border:</label>
       <button id="animatedBorderBtn">Off</button>
@@ -196,24 +185,18 @@
       <button id="btnRemoveWhite">Remove White</button>
       <button id="btnRemoveColor">Remove Color</button>
       <br><br>
-
-            <!-- Add this button inside your toolbar (or any suitable container),
-           so users can toggle between "Straight" and "Curve" arrow modes -->
       <button id="toggleCurveBtn">Straight</button>
       <br><br>
       <button id="undoBtn" disabled>Undo</button>
       <button id="redoBtn" disabled>Redo</button>
-
     </div>
   </div>
 
   <div id="canvasContainer">
     <canvas id="myCanvas" width="1200" height="1200"></canvas>
-    <!-- Inline text editing box -->
     <input type="text" id="shapeEditor" />
   </div>
 
-  <!-- Context menu container -->
   <div id="context-menu">
     <button id="ctx-bring-forward">Bring Forward</button>
     <button id="ctx-send-backward">Send Backward</button>
@@ -225,6 +208,6 @@
 
   <script src="gif.js"></script>
   <script src="gifuct-js.umd.js"></script>
-  <script src="main.js"></script>
+  <script type="module" src="main.js"></script>
 </body>
-</html> 
+</html>
