@@ -2121,6 +2121,7 @@ function shapeFromSerializable(sd) {
     newShape.fontSize = sd.fontSize || 14;
     newShape.fontFamily = sd.fontFamily || "Arial";
   }
+
   newShape.id = sd.id;
   newShape.color = sd.color || "#333";
   newShape.textColor = sd.textColor || "#000";
@@ -2128,6 +2129,14 @@ function shapeFromSerializable(sd) {
   newShape.lineWidth = sd.lineWidth || 2;
   newShape.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : false;
   newShape.opacity = sd.opacity !== undefined ? sd.opacity : 1;
+  
+  // Restore the shape's last used colors so that the color pickers persist:
+  newShape.lastUsedColors = {
+    line: newShape.color,
+    fill: newShape.fillColor,
+    text: newShape.textColor
+  };
+
   return newShape;
 }
 
