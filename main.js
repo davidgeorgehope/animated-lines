@@ -1156,6 +1156,34 @@ function onCanvasMouseDown(e) {
   const scaleVal = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
   const mx = (e.clientX - cRect.left) / scaleVal;
   const my = (e.clientY - cRect.top) / scaleVal;
+
+  // First, check if the click is on a waypoint
+  if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length) {
+    for (let i = 0; i < selectedArrow.waypoints.length; i++) {
+      const pt = selectedArrow.waypoints[i];
+      if (isPointNearPoint(mx, my, pt.x, pt.y, arrowManager.ARROW_HANDLE_SIZE)) {
+        selectedWaypointIndex = i;
+        requestRender();
+        return;
+      }
+    }
+  }
+
+  // Then, if using the "select" tool, select the whole arrow
+  if (currentTool === "select") {
+    const clickedArrow = arrowManager.findArrowUnderMouse(mx, my, getArrowSegments);
+    if (clickedArrow) {
+      selectedArrow = clickedArrow;
+      selectedShape = null;
+      updateShapeControls();  // Update arrow controls (line thickness and curve)
+      isDraggingArrow = true;
+      dragStartX = mx;
+      dragStartY = my;
+      requestRender();
+      return;
+    }
+  }
+  
   if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length) {
     for (let i = 0; i < selectedArrow.waypoints.length; i++) {
       const pt = selectedArrow.waypoints[i];
@@ -1187,18 +1215,6 @@ function onCanvasMouseDown(e) {
       return;
     }
   }
-  if (currentTool === "select") {
-    const clickedArrow = arrowManager.findArrowUnderMouse(mx, my, getArrowSegments);
-    if (clickedArrow) {
-      selectedArrow = clickedArrow;
-      selectedShape = null;
-      isDraggingArrow = true;
-      dragStartX = mx;
-      dragStartY = my;
-      requestRender();
-      return;
-    }
-  }
   if (selectedShape) {
     const hIdx = getHandleIndexAtPos(selectedShape, mx, my);
     if (hIdx !== -1) {
@@ -1211,11 +1227,11 @@ function onCanvasMouseDown(e) {
   const clickedShape = shapeManager.findShapeUnderMouse(mx, my);
   if (clickedShape) {
     if (currentTool === "select") {
+      selectedArrow = null; // Clear previous arrow selection
       selectedShape = clickedShape;
       draggingShape = clickedShape;
       dragOffsetX = mx - clickedShape.x;
       dragOffsetY = my - clickedShape.y;
-      // Update both font and color controls
       updateShapeControls(clickedShape);
       requestRender();
       return;
@@ -1430,45 +1446,84 @@ function onCanvasDblClick(e) {
       }
     }
     const segments = getArrowSegments(selectedArrow);
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      if (isPointNearLine(pos.x, pos.y, seg.x1, seg.y1, seg.x2, seg.y2, 15)) {
+    let minDistance = Infinity;
+    let bestSegmentIndex = -1;
+    
+    // For curved arrows, check distance to each segment
+    if (selectedArrow.curve) {
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const distance = distanceToLineSegment(pos.x, pos.y, seg.x1, seg.y1, seg.x2, seg.y2);
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestSegmentIndex = i;
+        }
+      }
+      
+      // Use a tighter threshold for curved lines (e.g., 8 pixels instead of 15)
+      if (minDistance <= 8) {
         if (!selectedArrow.waypoints) {
           selectedArrow.waypoints = [];
         }
-        const newPoint = { x: pos.x, y: pos.y };
-        if (selectedArrow.curve) {
-          const allPoints = getArrowPoints(selectedArrow);
-          let segmentIndex = -1;
-          for (let j = 0; j < allPoints.length - 1; j++) {
-            if (isPointNearLine(pos.x, pos.y, allPoints[j].x, allPoints[j].y, allPoints[j + 1].x, allPoints[j + 1].y, 15)) {
-              segmentIndex = j;
-              break;
-            }
+        
+        // Calculate insertion index based on total number of segments
+        const insertionIndex = Math.floor(bestSegmentIndex / (segments.length / (selectedArrow.waypoints.length + 1)));
+        selectedArrow.waypoints.splice(insertionIndex, 0, { x: pos.x, y: pos.y });
+        requestRender();
+      }
+    } else {
+      // ... existing straight line handling ...
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (isPointNearLine(pos.x, pos.y, seg.x1, seg.y1, seg.x2, seg.y2, 15)) {
+          if (!selectedArrow.waypoints) {
+            selectedArrow.waypoints = [];
           }
-          if (segmentIndex === -1) return;
-          let waypointIndex;
-          if (segmentIndex === 0) {
-            waypointIndex = 0;
-          } else if (segmentIndex >= allPoints.length - 2) {
-            waypointIndex = selectedArrow.waypoints.length;
-          } else {
-            waypointIndex = segmentIndex;
-          }
-          selectedArrow.waypoints.splice(waypointIndex, 0, newPoint);
-        } else {
           if (i === 0) {
-            selectedArrow.waypoints.unshift(newPoint);
+            selectedArrow.waypoints.unshift({ x: pos.x, y: pos.y });
           } else if (i === segments.length - 1) {
-            selectedArrow.waypoints.push(newPoint);
+            selectedArrow.waypoints.push({ x: pos.x, y: pos.y });
           } else {
-            selectedArrow.waypoints.splice(i, 0, newPoint);
+            selectedArrow.waypoints.splice(i, 0, { x: pos.x, y: pos.y });
           }
+          break;
         }
-        break;
       }
     }
   }
+}
+
+// Add this new helper function
+function distanceToLineSegment(px, py, x1, y1, x2, y2) {
+  const A = px - x1;
+  const B = py - y1;
+  const C = x2 - x1;
+  const D = y2 - y1;
+
+  const dot = A * C + B * D;
+  const len_sq = C * C + D * D;
+  let param = -1;
+
+  if (len_sq !== 0) {
+    param = dot / len_sq;
+  }
+
+  let xx, yy;
+
+  if (param < 0) {
+    xx = x1;
+    yy = y1;
+  } else if (param > 1) {
+    xx = x2;
+    yy = y2;
+  } else {
+    xx = x1 + param * C;
+    yy = y1 + param * D;
+  }
+
+  const dx = px - xx;
+  const dy = py - yy;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 function onDocKeyDown(e) {
@@ -1936,7 +1991,12 @@ function shapeToSerializable(s) {
       gifSrc: s.gifSrc || "",
       speedMultiplier: s.speedMultiplier,
       opacity: s.opacity !== undefined ? s.opacity : 1,
-      isAnimated: s.isAnimated
+      isAnimated: s.isAnimated,
+      lastUsedColors: s.lastUsedColors || {
+        line: s.color,
+        fill: s.fillColor,
+        text: s.textColor
+      }
     };
   } else if (s instanceof ImageShape) {
     return {
@@ -1952,7 +2012,12 @@ function shapeToSerializable(s) {
       fillColor: s.fillColor,
       lineWidth: s.lineWidth,
       isAnimated: s.isAnimated,
-      opacity: s.opacity !== undefined ? s.opacity : 1
+      opacity: s.opacity !== undefined ? s.opacity : 1,
+      lastUsedColors: s.lastUsedColors || {
+        line: s.color,
+        fill: s.fillColor,
+        text: s.textColor
+      }
     };
   } else if (s instanceof TextShape) {
     return {
@@ -1967,7 +2032,13 @@ function shapeToSerializable(s) {
       textColor: s.textColor,
       fillColor: s.fillColor,
       lineWidth: s.lineWidth,
-      opacity: s.opacity !== undefined ? s.opacity : 1
+      isAnimated: s.isAnimated,
+      opacity: s.opacity !== undefined ? s.opacity : 1,
+      lastUsedColors: s.lastUsedColors || {
+        line: s.color,
+        fill: s.fillColor,
+        text: s.textColor
+      }
     };
   } else {
     return {
@@ -1985,7 +2056,12 @@ function shapeToSerializable(s) {
       fillColor: s.fillColor,
       lineWidth: s.lineWidth,
       isAnimated: s.isAnimated,
-      opacity: s.opacity !== undefined ? s.opacity : 1
+      opacity: s.opacity !== undefined ? s.opacity : 1,
+      lastUsedColors: s.lastUsedColors || {
+        line: s.color,
+        fill: s.fillColor,
+        text: s.textColor
+      }
     };
   }
 }
@@ -2113,8 +2189,8 @@ function shapeFromSerializable(sd) {
   newShape.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : false;
   newShape.opacity = sd.opacity !== undefined ? sd.opacity : 1;
   
-  // Restore the shape's last used colors so that the color pickers persist:
-  newShape.lastUsedColors = {
+  // Restore the shape's last used colors
+  newShape.lastUsedColors = sd.lastUsedColors || {
     line: newShape.color,
     fill: newShape.fillColor,
     text: newShape.textColor
@@ -2123,14 +2199,29 @@ function shapeFromSerializable(sd) {
   return newShape;
 }
 
-// Add this new function to update font controls
 function updateShapeControls(shape) {
-  if (!shape) return;
+  // Handle both shapes and arrows
+  if (!shape && !selectedArrow) return;
 
   // Don't update pickers if shape is an ImageShape or AnimatedGifShape
   if (shape instanceof ImageShape || shape instanceof AnimatedGifShape) return;
 
-  // Restore the shape's last used colors to the pickers
+  if (selectedArrow) {
+    // Update controls for selected arrow
+    if (arrowColorPicker) {
+      arrowColorPicker.value = selectedArrow.color || "#000000";
+    }
+    if (lineThicknessPicker) {
+      lineThicknessPicker.value = selectedArrow.lineWidth || "2";
+    }
+    const toggleCurveBtn = document.getElementById("toggleCurveBtn");
+    if (toggleCurveBtn) {
+      toggleCurveBtn.textContent = selectedArrow.curve ? "Curve" : "Straight";
+    }
+    return;
+  }
+
+  // Update controls for selected shape
   if (arrowColorPicker && shape.lastUsedColors) {
     arrowColorPicker.value = shape.lastUsedColors.line;
   }
@@ -2141,22 +2232,28 @@ function updateShapeControls(shape) {
     textColorPicker.value = shape.lastUsedColors.text;
   }
 
-    // Update font size select
-    if (fontSizeSelect) {
-      fontSizeSelect.value = shape.fontSize || "14";
-    }
-    
-    // Update font family select
-    if (fontFamilySelect) {
-      fontFamilySelect.value = shape.fontFamily || "Arial";
-    }
+  // Update font controls
+  if (fontSizeSelect) {
+    fontSizeSelect.value = shape.fontSize || "14";
+  }
+  if (fontFamilySelect) {
+    fontFamilySelect.value = shape.fontFamily || "Arial";
+  }
 
-    // Update opacity range
-    const opacityRange = document.getElementById("opacityRange");
-    if (opacityRange) {
-      opacityRange.value = shape.opacity || 1;
-    }
-  
+  // Update other controls
+  const opacityRange = document.getElementById("opacityRange");
+  if (opacityRange) {
+    opacityRange.value = shape.opacity || 1;
+  }
+
+  if (lineThicknessPicker) {
+    lineThicknessPicker.value = shape.lineWidth || "2";
+  }
+
+  const animatedBorderBtn = document.getElementById("animatedBorderBtn");
+  if (animatedBorderBtn) {
+    animatedBorderBtn.textContent = shape.isAnimated ? "On" : "Off";
+  }
 }
 
 
