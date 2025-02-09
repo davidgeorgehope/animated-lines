@@ -1157,11 +1157,11 @@ function onCanvasMouseDown(e) {
   const mx = (e.clientX - cRect.left) / scaleVal;
   const my = (e.clientY - cRect.top) / scaleVal;
 
-  // First, check if the click is on a waypoint
+  // First, if an arrow is already selected and it has waypoints,
+  // check if the user clicked on one of its waypoint handles.
   if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length) {
     for (let i = 0; i < selectedArrow.waypoints.length; i++) {
-      const pt = selectedArrow.waypoints[i];
-      if (isPointNearPoint(mx, my, pt.x, pt.y, arrowManager.ARROW_HANDLE_SIZE)) {
+      if (isPointNearPoint(mx, my, selectedArrow.waypoints[i].x, selectedArrow.waypoints[i].y, arrowManager.ARROW_HANDLE_SIZE)) {
         selectedWaypointIndex = i;
         requestRender();
         return;
@@ -1169,13 +1169,37 @@ function onCanvasMouseDown(e) {
     }
   }
 
-  // Then, if using the "select" tool, select the whole arrow
+  // **NEW:** In select mode, check if the click is on the endpoint handle of any free arrow.
+  // This ensures that if a free arrow (even one with waypoints) is clicked near an endpoint,
+  // we initiate endpoint dragging rather than moving the entire arrow.
+  if (currentTool === "select") {
+    for (let arrow of arrowManager.arrows) {
+      if (arrow.fromId === undefined) {
+        if (isPointNearPoint(mx, my, arrow.fromX, arrow.fromY, arrowManager.ARROW_HANDLE_SIZE)) {
+          selectedArrow = arrow;
+          isDraggingArrowHandle = true;
+          draggedHandle = "start";
+          requestRender();
+          return;
+        }
+        if (isPointNearPoint(mx, my, arrow.toX, arrow.toY, arrowManager.ARROW_HANDLE_SIZE)) {
+          selectedArrow = arrow;
+          isDraggingArrowHandle = true;
+          draggedHandle = "end";
+          requestRender();
+          return;
+        }
+      }
+    }
+  }
+
+  // If not dragging a handle, use the regular arrow selection to select the whole arrow.
   if (currentTool === "select") {
     const clickedArrow = arrowManager.findArrowUnderMouse(mx, my, getArrowSegments);
     if (clickedArrow) {
       selectedArrow = clickedArrow;
       selectedShape = null;
-      updateShapeControls();  // Update arrow controls (line thickness and curve)
+      updateShapeControls();
       isDraggingArrow = true;
       dragStartX = mx;
       dragStartY = my;
@@ -1183,17 +1207,9 @@ function onCanvasMouseDown(e) {
       return;
     }
   }
-  
-  if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length) {
-    for (let i = 0; i < selectedArrow.waypoints.length; i++) {
-      const pt = selectedArrow.waypoints[i];
-      if (isPointNearPoint(mx, my, pt.x, pt.y, arrowManager.ARROW_HANDLE_SIZE)) {
-        selectedWaypointIndex = i;
-        requestRender();
-        return;
-      }
-    }
-  }
+
+  // (The rest of the function stays as before—for handling free arrow creation,
+  // shapes dragging, and creating new rectangles or text.)
   if (currentTool === "freeArrow") {
     isDrawingFreeArrow = true;
     freeArrowStart = { x: mx, y: my };
@@ -1201,20 +1217,7 @@ function onCanvasMouseDown(e) {
     requestRender();
     return;
   }
-  if (selectedArrow && selectedArrow.fromId === undefined) {
-    if (isPointNearPoint(mx, my, selectedArrow.fromX, selectedArrow.fromY, arrowManager.ARROW_HANDLE_SIZE)) {
-      isDraggingArrowHandle = true;
-      draggedHandle = "start";
-      requestRender();
-      return;
-    }
-    if (isPointNearPoint(mx, my, selectedArrow.toX, selectedArrow.toY, arrowManager.ARROW_HANDLE_SIZE)) {
-      isDraggingArrowHandle = true;
-      draggedHandle = "end";
-      requestRender();
-      return;
-    }
-  }
+
   if (selectedShape) {
     const hIdx = getHandleIndexAtPos(selectedShape, mx, my);
     if (hIdx !== -1) {
@@ -1224,6 +1227,7 @@ function onCanvasMouseDown(e) {
       return;
     }
   }
+  
   const clickedShape = shapeManager.findShapeUnderMouse(mx, my);
   if (clickedShape) {
     if (currentTool === "select") {
@@ -1241,6 +1245,7 @@ function onCanvasMouseDown(e) {
     selectedArrow = null;
     requestRender();
   }
+
   if (currentTool === "rect") {
     const shapeText = prompt("Enter text for the rectangle:", "Shape");
     if (shapeText !== null) {
@@ -1275,33 +1280,56 @@ function onCanvasMouseMove(e) {
   const mx = (e.clientX - cRect.left) / scaleVal;
   const my = (e.clientY - cRect.top) / scaleVal;
 
+  // If dragging a waypoint handle
   if (selectedWaypointIndex !== -1 && selectedArrow && selectedArrow.waypoints) {
     selectedArrow.waypoints[selectedWaypointIndex] = { x: mx, y: my };
     requestRender();
     return;
   }
 
+  // If dragging an endpoint (the control dot)
+  if (isDraggingArrowHandle && selectedArrow) {
+    // If the arrow is still connected, detach it on the dragged end.
+    if (draggedHandle === "start") {
+      if (selectedArrow.fromId !== undefined) {
+        selectedArrow.fromId = undefined; // detach from shape
+      }
+      selectedArrow.fromX = mx;
+      selectedArrow.fromY = my;
+    } else if (draggedHandle === "end") {
+      if (selectedArrow.toId !== undefined) {
+        selectedArrow.toId = undefined; // detach from shape
+      }
+      selectedArrow.toX = mx;
+      selectedArrow.toY = my;
+    }
+    requestRender();
+    return;
+  }
+
+  // Regular free arrow drawing
   if (isDrawingFreeArrow && freeArrowStart) {
     currentFreeArrowPos = { x: mx, y: my };
     requestRender();
     return;
   }
+
+  // Resizing a shape
   if (isResizing && selectedShape) {
     resizeShape(selectedShape, resizeHandleIndex, mx, my);
     requestRender();
     return;
   }
+
+  // Dragging a shape
   if (draggingShape) {
     draggingShape.x = mx - dragOffsetX;
     draggingShape.y = my - dragOffsetY;
     requestRender();
     return;
-  } else if (isDrawingLine) {
-    arrowEndPos.x = mx;
-    arrowEndPos.y = my;
-    requestRender();
-    return;
   }
+  
+  // If dragging the entire arrow (body)
   if (isDraggingArrow && selectedArrow && selectedArrow.fromId === undefined) {
     const dx = mx - dragStartX;
     const dy = my - dragStartY;
@@ -1314,17 +1342,8 @@ function onCanvasMouseMove(e) {
     requestRender();
     return;
   }
-  if (isDraggingArrowHandle && selectedArrow) {
-    if (draggedHandle === "start") {
-      selectedArrow.fromX = mx;
-      selectedArrow.fromY = my;
-    } else if (draggedHandle === "end") {
-      selectedArrow.toX = mx;
-      selectedArrow.toY = my;
-    }
-    requestRender();
-    return;
-  }
+  
+  // Hover detection code for arrow body (not endpoints) remains below.
   if (!draggingShape && !isDrawingLine && !isDraggingArrow && selectedWaypointIndex === -1) {
     const arrow = arrowManager.findArrowUnderMouse(mx, my, getArrowSegments);
     if (arrow !== hoveredArrow) {
