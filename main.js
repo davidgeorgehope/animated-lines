@@ -207,14 +207,24 @@ class TextShape {
     ctx.fillStyle = this.textColor;
     ctx.globalAlpha = this.opacity;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
-    
+    ctx.textAlign = "center";      // Use canvas API to center align text horizontally
+    ctx.textBaseline = "middle";   // Adjust vertical alignment if desired
+
+    // Wrap the text using the provided helper
     const lines = wrapText(ctx, this.text, this.width);
     const lineHeight = this.fontSize * 1.2;
     this.height = lines.length * lineHeight;
     
-    let y = this.y;
+    // Determine horizontal center
+    // You can also adjust vertical position if you want to center the text block vertically within the shape
+    const centerX = this.x + this.width / 2;
+    
+    // For simplicity, display from the top of the shape.
+    // If you need full vertical centering, you can compute an offset too.
+    let y = this.y + this.fontSize;
+    
     lines.forEach(line => {
-      ctx.fillText(line, this.x, y + this.fontSize);
+      ctx.fillText(line, centerX, y);
       y += lineHeight;
     });
     
