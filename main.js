@@ -1232,8 +1232,7 @@ function onCanvasMouseDown(e) {
       dragOffsetX = mx - clickedShape.x;
       dragOffsetY = my - clickedShape.y;
       // Update both font and color controls
-      updateFontControls(clickedShape);
-      updateColorControls(clickedShape);
+      updateShapeControls(clickedShape);
       requestRender();
       return;
     }
@@ -2141,30 +2140,7 @@ function shapeFromSerializable(sd) {
 }
 
 // Add this new function to update font controls
-function updateFontControls(shape) {
-  if (!shape) return;
-  
-  if (shape instanceof TextShape || shape instanceof Shape) {
-    // Update font size select
-    if (fontSizeSelect) {
-      fontSizeSelect.value = shape.fontSize || "14";
-    }
-    
-    // Update font family select
-    if (fontFamilySelect) {
-      fontFamilySelect.value = shape.fontFamily || "Arial";
-    }
-
-    // Update opacity range
-    const opacityRange = document.getElementById("opacityRange");
-    if (opacityRange) {
-      opacityRange.value = shape.opacity || 1;
-    }
-  }
-}
-
-// Add after the existing updateFontControls function
-function updateColorControls(shape) {
+function updateShapeControls(shape) {
   if (!shape) return;
 
   // Don't update pickers if shape is an ImageShape or AnimatedGifShape
@@ -2180,4 +2156,23 @@ function updateColorControls(shape) {
   if (textColorPicker && shape.lastUsedColors) {
     textColorPicker.value = shape.lastUsedColors.text;
   }
+
+    // Update font size select
+    if (fontSizeSelect) {
+      fontSizeSelect.value = shape.fontSize || "14";
+    }
+    
+    // Update font family select
+    if (fontFamilySelect) {
+      fontFamilySelect.value = shape.fontFamily || "Arial";
+    }
+
+    // Update opacity range
+    const opacityRange = document.getElementById("opacityRange");
+    if (opacityRange) {
+      opacityRange.value = shape.opacity || 1;
+    }
+  
 }
+
+
