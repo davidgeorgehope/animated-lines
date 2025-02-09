@@ -47,7 +47,7 @@ class CanvasManager {
 /////////////////////////////////////////////////
 let shapeCounter = 0;
 
-// Add this helper function near the top of the file
+// Helper function for word wrap
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(' ');
   const lines = [];
@@ -92,7 +92,13 @@ class Shape {
     };
   }
 
-  draw(ctx, dashOffset, exportingGif, exportDashOffset) {
+  // Time-based update (by default does nothing; override in subclasses if needed)
+  update(dt) {
+    // If you want to animate something about this shape over time, do it here.
+    // e.g., if (this.isAnimated) { ... }
+  }
+
+  draw(ctx, dashOffset) {
     ctx.save();
     ctx.globalAlpha = this.opacity;
     ctx.fillStyle = this.fillColor;
@@ -100,8 +106,7 @@ class Shape {
     
     if (this.isAnimated) {
       ctx.setLineDash([6, 4]);
-      const effectiveDashOffset = exportingGif ? exportDashOffset : dashOffset;
-      ctx.lineDashOffset = -(effectiveDashOffset % 10);
+      ctx.lineDashOffset = -(dashOffset % 10);
     } else {
       ctx.setLineDash([]);
       ctx.lineDashOffset = 0;
@@ -150,7 +155,11 @@ class ImageShape extends Shape {
     this.img = img;
   }
 
-  draw(ctx, dashOffset, exportingGif, exportDashOffset) {
+  update(dt) {
+    // No time-based animation by default for images (unless you add something).
+  }
+
+  draw(ctx, dashOffset) {
     if (!this.img) return;
     ctx.save();
     ctx.globalAlpha = this.opacity;
@@ -178,22 +187,31 @@ class TextShape {
     this.width = metrics.width;
     this.height = this.fontSize;
     this.opacity = 1;
+    this.isAnimated = false;
+    this.color = "#333"; // Not really used here
+    this.fillColor = "#e8f1fa"; // Not used for text
+    this.lineWidth = 2; // Not used
+    this.lastUsedColors = {
+      line: this.color,
+      fill: this.fillColor,
+      text: this.textColor
+    };
   }
 
-  draw(ctx) {
+  update(dt) {
+    // If needed, animate text over time
+  }
+
+  draw(ctx, dashOffset) {
     ctx.save();
     ctx.fillStyle = this.textColor;
     ctx.globalAlpha = this.opacity;
     ctx.font = `${this.fontSize}px ${this.fontFamily}`;
     
-    // For TextShape, we'll make the width grow with the content
     const lines = wrapText(ctx, this.text, this.width);
     const lineHeight = this.fontSize * 1.2;
-    
-    // Update the shape's height based on number of lines
     this.height = lines.length * lineHeight;
     
-    // Draw each line
     let y = this.y;
     lines.forEach(line => {
       ctx.fillText(line, this.x, y + this.fontSize);
@@ -226,7 +244,6 @@ class AnimatedGifShape {
     this.frames = frames;
     this.speedMultiplier = speedMultiplier;
     this.currentFrameIndex = 0;
-    this.lastFrameTime = performance.now();
     this.backgroundCanvas = document.createElement("canvas");
     this.backgroundCtx = this.backgroundCanvas.getContext("2d", {
       willReadFrequently: true,
@@ -237,10 +254,36 @@ class AnimatedGifShape {
     this.backgroundCanvas.width = this.width;
     this.backgroundCanvas.height = this.height;
     this.opacity = 1;
-    this.isAnimated = false;
+    this.isAnimated = true; // <-- Set this to true so frames update
+
+    // For consistent shape styling (unused, but included for parallels)
+    this.color = "#333";
+    this.fillColor = "#e8f1fa";
+    this.textColor = "#000";
+    this.lineWidth = 2;
+    this.lastUsedColors = {
+      line: this.color,
+      fill: this.fillColor,
+      text: this.textColor
+    };
+
+    // We'll accumulate elapsed time to know when to switch frames
+    this.accumulatedTime = 0;
+
     this.preRenderFrames();
   }
-
+  getTotalLoopTime() {
+    // Sum all frame delays for a single loop
+    return this.imageFrames.reduce(
+      (acc, f) => acc + (f.delay || 100),
+      0
+    );
+  }
+  resetAnimation() {
+    this.currentFrameIndex = 0;
+    this.accumulatedTime = 0;
+    this.backgroundCtx.clearRect(0, 0, this.width, this.height);
+  }
   preRenderFrames() {
     this.imageFrames = this.frames.map(frame => {
       const { dims, patch } = frame;
@@ -266,11 +309,21 @@ class AnimatedGifShape {
     });
   }
 
-  update() {
-    const now = performance.now();
+  update(dt) {
+    // Only advance frames if shape is actually "animated"
+    if (!this.isAnimated || !this.imageFrames.length) return;
+
+    // Accumulate dt in milliseconds
+    this.accumulatedTime += dt;
+
     const currentFrame = this.imageFrames[this.currentFrameIndex];
     const delayMs = currentFrame.delay || 100;
-    if (now - this.lastFrameTime > delayMs) {
+
+    // When we've exceeded the frame delay, move to the next frame
+    while (this.accumulatedTime > delayMs) {
+      this.accumulatedTime -= delayMs;
+
+      // If disposalType === 2, clear that part from background
       if (currentFrame.disposalType === 2) {
         this.backgroundCtx.clearRect(
           currentFrame.dims.left,
@@ -279,21 +332,29 @@ class AnimatedGifShape {
           currentFrame.dims.height
         );
       }
+
+      // Move to next frame
       this.currentFrameIndex = (this.currentFrameIndex + 1) % this.imageFrames.length;
-      this.lastFrameTime = now;
     }
   }
 
-  draw(ctx) {
-    this.update();
-    const frame = this.imageFrames[this.currentFrameIndex];
+  draw(ctx, dashOffset) {
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     ctx.globalAlpha = this.opacity;
+
+    // Draw background from previous frames
     ctx.drawImage(this.backgroundCanvas, this.x, this.y, this.width, this.height);
-    ctx.drawImage(frame.canvas, this.x, this.y, this.width, this.height);
-    if (frame.disposalType !== 2) {
-      this.backgroundCtx.drawImage(frame.canvas, 0, 0);
+
+    // Draw the current frame
+    const frame = this.imageFrames[this.currentFrameIndex];
+    if (frame) {
+      ctx.drawImage(frame.canvas, this.x, this.y, this.width, this.height);
+
+      // If disposal is not "clear," we paint onto the background
+      if (frame.disposalType !== 2) {
+        this.backgroundCtx.drawImage(frame.canvas, 0, 0);
+      }
     }
     ctx.restore();
   }
@@ -568,7 +629,7 @@ class ModifyTextCommand extends Command {
 }
 
 /////////////////////////////////////////////////
-// ExportedGif Class (for capturing frames)
+// GifExporter Class
 /////////////////////////////////////////////////
 class GifExporter {
   constructor(canvas, onProgress, onFinished) {
@@ -597,14 +658,12 @@ class GifExporter {
   }
 }
 
-
+/////////////////////////////////////////////////
+// Main Animation Variables
+/////////////////////////////////////////////////
 const HANDLE_SIZE = 8;
 let dashOffset = 0;
-let exportingGif = false;
-let exportDashOffset = 0;
 let canvasBgColor = "#ffffff";
-let needsRender = true;
-let renderScheduled = false;
 let freeArrows = [];
 let isDrawingFreeArrow = false;
 let freeArrowStart = null;
@@ -635,44 +694,284 @@ let shapeManager, arrowManager, historyManager;
 let shapeEditorInput;
 let arrowColorPicker, fillColorPicker, lineThicknessPicker, fontSizeSelect, fontFamilySelect;
 let textColorPicker;
-let continuousAnimReqId = 0;
 
-function requestRender() {
-  needsRender = true;
-  if (!renderScheduled) {
-    renderScheduled = true;
-    requestAnimationFrame(animate);
-  }
-}
+/////////////////////////////////////////////////
+// Setup & Init
+/////////////////////////////////////////////////
+document.addEventListener("DOMContentLoaded", () => {
+  canvas = document.getElementById("myCanvas");
+  ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const cManager = new CanvasManager(canvas);
+  cManager.adjustCanvasZoom();
+  window.addEventListener("resize", () => cManager.adjustCanvasZoom());
 
+  shapeManager = new ShapeManager();
+  arrowManager = new ArrowManager();
+  historyManager = new HistoryManager();
 
-function animate() {
-  renderScheduled = false;
-  needsRender = false;
-  ctx.fillStyle = canvasBgColor;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  shapeEditorInput = document.getElementById("shapeEditor");
+  arrowColorPicker = document.getElementById("arrowColorPicker");
+  fillColorPicker = document.getElementById("fillColorPicker");
+  lineThicknessPicker = document.getElementById("lineThicknessPicker");
+  fontSizeSelect = document.getElementById("fontSizeSelect");
+  fontFamilySelect = document.getElementById("fontFamilySelect");
+  textColorPicker = document.getElementById("textColorPicker");
 
-  shapeManager.shapes.forEach(s => {
-    if (s instanceof AnimatedGifShape) {
-      s.draw(ctx);
-    } else if (s instanceof ImageShape) {
-      s.draw(ctx, dashOffset, exportingGif, exportDashOffset);
-    } else if (s instanceof TextShape) {
-      s.draw(ctx);
-    } else if (s instanceof Shape) {
-      s.draw(ctx, dashOffset, exportingGif, exportDashOffset);
+  document.getElementById("toolSelect").addEventListener("click", () => {
+    currentTool = "select";
+    clearEditor();
+  });
+  document.getElementById("toolRect").addEventListener("click", () => {
+    currentTool = "rect";
+    clearEditor();
+  });
+  document.getElementById("toolArrow").addEventListener("click", () => {
+    currentTool = "arrow";
+    clearEditor();
+  });
+  document.getElementById("toolFreeArrow").addEventListener("click", () => {
+    currentTool = "freeArrow";
+    clearEditor();
+  });
+  document.getElementById("toolText").addEventListener("click", () => {
+    currentTool = "text";
+    clearEditor();
+  });
+
+  document.getElementById("exportGifBtn").addEventListener("click", exportAnimatedGif);
+  document.getElementById("saveBtn").addEventListener("click", saveDiagram);
+  document.getElementById("loadBtn").addEventListener("click", loadDiagramFromFile);
+
+  arrowColorPicker.addEventListener("input", e => {
+    if (selectedArrow) {
+      selectedArrow.color = e.target.value;
+    } else if (selectedShape) {
+      selectedShape.color = e.target.value;
+      selectedShape.lastUsedColors.line = e.target.value;
+    }
+    // no direct draw call; the main loop handles it
+  });
+
+  fillColorPicker.addEventListener("input", e => {
+    if (selectedShape) {
+      if (selectedShape instanceof TextShape) return;
+      if (selectedShape instanceof ImageShape) return;
+      if (selectedShape instanceof AnimatedGifShape) return;
+      selectedShape.fillColor = e.target.value;
+      selectedShape.lastUsedColors.fill = e.target.value;
     }
   });
 
+  lineThicknessPicker.addEventListener("input", e => {
+    if (selectedArrow) {
+      selectedArrow.lineWidth = parseInt(e.target.value);
+    } else if (selectedShape) {
+      selectedShape.lineWidth = parseInt(e.target.value);
+    }
+  });
+
+  textColorPicker.addEventListener("input", e => {
+    if (selectedShape) {
+      if (selectedShape instanceof ImageShape) return;
+      if (selectedShape instanceof AnimatedGifShape) return;
+      selectedShape.textColor = e.target.value;
+      selectedShape.lastUsedColors.text = e.target.value;
+    }
+  });
+
+  const canvasColorPicker = document.getElementById("canvasColorPicker");
+  if (canvasColorPicker) {
+    canvasColorPicker.addEventListener("input", e => {
+      canvasBgColor = e.target.value;
+    });
+  }
+
+  document.getElementById("opacityRange").addEventListener("input", e => {
+    if (selectedShape) {
+      selectedShape.opacity = parseFloat(e.target.value);
+    }
+  });
+
+  document.getElementById("animatedBorderBtn").addEventListener("click", e => {
+    if (!selectedShape) return;
+    selectedShape.isAnimated = !selectedShape.isAnimated;
+    e.target.textContent = selectedShape.isAnimated ? "On" : "Off";
+  });
+
+  document.getElementById("btnRemoveWhite").addEventListener("click", removeWhiteBG);
+  document.getElementById("btnRemoveColor").addEventListener("click", removeColorBG);
+  document.getElementById("toggleCurveBtn").addEventListener("click", e => {
+    if (selectedArrow) {
+      selectedArrow.curve = !selectedArrow.curve;
+      e.target.textContent = selectedArrow.curve ? "Curve" : "Straight";
+    }
+  });
+
+  const undoBtn = document.getElementById("undoBtn");
+  undoBtn.addEventListener("click", () => {
+    historyManager.undo();
+  });
+  const redoBtn = document.getElementById("redoBtn");
+  redoBtn.addEventListener("click", () => {
+    historyManager.redo();
+  });
+
+  // Canvas event listeners
+  canvas.addEventListener("mousedown", onCanvasMouseDown);
+  canvas.addEventListener("mousemove", onCanvasMouseMove);
+  canvas.addEventListener("mouseup", onCanvasMouseUp);
+  canvas.addEventListener("dblclick", onCanvasDblClick);
+  document.addEventListener("keydown", onDocKeyDown);
+  document.addEventListener("click", () => {
+    const contextMenu = document.getElementById("context-menu");
+    contextMenu.style.display = "none";
+    hoveredArrow = null;
+    canvas.style.cursor = "default";
+  });
+  canvas.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    const shape = shapeManager.findShapeUnderMouse(
+      cManager.getMousePos(e).x,
+      cManager.getMousePos(e).y
+    );
+    if (shape) {
+      selectedShape = shape;
+      const menu = document.getElementById("context-menu");
+      menu.style.left = e.clientX + "px";
+      menu.style.top = e.clientY + "px";
+      menu.style.display = "block";
+    }
+  });
+
+  document.getElementById("ctx-bring-forward").addEventListener("click", () => {
+    if (selectedShape) {
+      bringShapeForward(selectedShape);
+    }
+    document.getElementById("context-menu").style.display = "none";
+  });
+
+  document.getElementById("ctx-send-backward").addEventListener("click", () => {
+    if (selectedShape) {
+      sendShapeBackward(selectedShape);
+    }
+    document.getElementById("context-menu").style.display = "none";
+  });
+
+  document.getElementById("ctx-bring-front").addEventListener("click", () => {
+    if (selectedShape) {
+      bringShapeToFront(selectedShape);
+    }
+    document.getElementById("context-menu").style.display = "none";
+  });
+
+  document.getElementById("ctx-send-back").addEventListener("click", () => {
+    if (selectedShape) {
+      sendShapeToBack(selectedShape);
+    }
+    document.getElementById("context-menu").style.display = "none";
+  });
+
+  document.getElementById("ctx-delete").addEventListener("click", () => {
+    if (selectedShape) {
+      historyManager.execute(
+        new DeleteShapeCommand(selectedShape, shapeManager, arrowManager)
+      );
+      selectedShape = null;
+    } else if (selectedArrow) {
+      historyManager.execute(new DeleteArrowCommand(selectedArrow, arrowManager));
+      selectedArrow = null;
+    }
+    document.getElementById("context-menu").style.display = "none";
+  });
+
+  document.addEventListener("paste", onDocPaste);
+
+  canvas.addEventListener("dragover", e => {
+    e.preventDefault();
+  });
+  canvas.addEventListener("drop", onCanvasDrop);
+
+  // Start the main animation loop
+  requestAnimationFrame(mainLoop);
+
+  fontSizeSelect.addEventListener("change", e => {
+    if (selectedShape) {
+      selectedShape.fontSize = parseInt(e.target.value);
+      if (selectedShape instanceof TextShape) {
+        // recalc text shape width
+        const tempCtx = document.createElement("canvas").getContext("2d");
+        tempCtx.font = `${selectedShape.fontSize}px ${selectedShape.fontFamily}`;
+        const metrics = tempCtx.measureText(selectedShape.text);
+        selectedShape.width = metrics.width;
+        selectedShape.height = selectedShape.fontSize;
+      }
+    }
+  });
+
+  fontFamilySelect.addEventListener("change", e => {
+    if (selectedShape) {
+      selectedShape.fontFamily = e.target.value;
+      if (selectedShape instanceof TextShape) {
+        // recalc text shape width
+        const tempCtx = document.createElement("canvas").getContext("2d");
+        tempCtx.font = `${selectedShape.fontSize}px ${selectedShape.fontFamily}`;
+        const metrics = tempCtx.measureText(selectedShape.text);
+        selectedShape.width = metrics.width;
+        selectedShape.height = selectedShape.fontSize;
+      }
+    }
+  });
+});
+
+/////////////////////////////////////////////////
+// Main Loop: Time-Based Animation
+/////////////////////////////////////////////////
+let lastTime = 0;
+function mainLoop(timestamp) {
+  const dt = timestamp - lastTime; // dt in ms
+  lastTime = timestamp;
+
+  // 1) Update
+  update(dt);
+
+  // 2) Draw
+  drawAll();
+
+  // Keep going
+  requestAnimationFrame(mainLoop);
+}
+
+function update(dt) {
+  // Convert dt to milliseconds. dt is already ms from rAF, so no conversion needed
+  // If you want dashOffset to move at e.g. 0.02 px per ms:
+  dashOffset += 0.02 * dt;
+
+  // Update each shape (some shapes might animate)
+  shapeManager.shapes.forEach(shape => shape.update(dt));
+}
+
+function drawAll() {
+  // Clear canvas
+  ctx.fillStyle = canvasBgColor;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw shapes
+  shapeManager.shapes.forEach(s => {
+    s.draw(ctx, dashOffset);
+  });
+
+  // Draw arrows
   arrowManager.arrows.forEach(arrow => {
     drawArrowFull(ctx, arrow);
   });
 
+  // Temporary line if user is in the middle of drawing an arrow
   if (isDrawingLine && arrowStartShape) {
     const fromPt = getEdgeIntersection(arrowStartShape, arrowEndPos.x, arrowEndPos.y);
     drawTempLine(ctx, fromPt.x, fromPt.y, arrowEndPos.x, arrowEndPos.y);
   }
 
+  // Temporary free arrow if in the middle of drawing one
   if (isDrawingFreeArrow && freeArrowStart && currentFreeArrowPos) {
     drawArrowFull(ctx, {
       fromId: undefined,
@@ -686,23 +985,141 @@ function animate() {
     });
   }
 
+  // Draw resize handles if a shape is selected
   if (selectedShape) {
     drawResizeHandles(ctx, selectedShape);
   }
+
+  // Draw arrow handles if an arrow is selected
   if (selectedArrow) {
     drawArrowSelectionHandles(ctx, selectedArrow);
   }
-  if (!exportingGif) {
-    dashOffset += 0.5;
-  }
-  requestRender();
-  
 }
 
+function exportAnimatedGif() {
+  // First, reset all animated GIF shapes
+  shapeManager.shapes.forEach(s => {
+    if (s instanceof AnimatedGifShape) {
+      s.resetAnimation();
+    }
+  });
+
+  // Find maximum single-loop time among *all* AnimatedGifShape objects
+  let maxLoopTime = 0;
+  shapeManager.shapes.forEach(s => {
+    if (s instanceof AnimatedGifShape) {
+      const loopTime = s.getTotalLoopTime();
+      if (loopTime > maxLoopTime) {
+        maxLoopTime = loopTime;
+      }
+    }
+  });
+
+  // If there are no GIF shapes, fallback to a default
+  if (maxLoopTime === 0) {
+    maxLoopTime = 2000; // 2 seconds, for instance
+  }
+
+  // Decide FPS for the exported GIF
+  const fps = 15;
+  const frameDelay = 1000 / fps;  // ~66ms
+  // We want exactly 1 cycle (or 2 cycles, etc.). Let's do 1 cycle for simplicity:
+  const totalDurationMs = maxLoopTime; // do exactly one loop
+  const totalFrames = Math.round(totalDurationMs / frameDelay);
+
+  // Create the GifExporter
+  const gifExporter = new GifExporter(canvas, p => {
+    // progress
+  }, blob => {
+    // finished callback
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "animated_diagram.gif";
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // We'll store dashOffset and lastTime if you want to restore them
+  const oldDashOffset = dashOffset;
+  const oldLastTime = lastTime;
+
+  // Do the offline recording
+  for (let f = 0; f < totalFrames; f++) {
+    update(frameDelay);  // step the scene
+    drawAll();           // render to canvas
+    gifExporter.addFrame(frameDelay);
+  }
+
+  gifExporter.render();
+
+  // Optionally restore offsets
+  dashOffset = oldDashOffset;
+  lastTime = oldLastTime;
+}
+
+
+/////////////////////////////////////////////////
+// Offline GIF Export
+/////////////////////////////////////////////////
+function exportAnimatedGifOld() {
+  // We do an "offline" approach: step the entire animation at a fixed rate
+  // and add frames to a new GIF, guaranteeing consistent playback timing.
+
+  // 1. Create a new GifExporter
+  const gifExporter = new GifExporter(
+    canvas,
+    p => { /* progress callback if you want it */ },
+    blob => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "animated_diagram.gif";
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+  );
+
+  // Decide how long to record, at what FPS, etc.
+  // Example: record 2 seconds at 15 fps
+  const totalDurationMs = 2000;  // 2 seconds
+  const fps = 15;
+  const frameDelay = 1000 / fps; // each frame gets 1000/15 ~ 66.6 ms
+  const totalFrames = Math.round(totalDurationMs / frameDelay);
+
+  // We'll store the old dashOffset and shape states, so we can restore after
+  const oldDashOffset = dashOffset;
+  const oldLastTime = lastTime; // might not matter, but let's store it
+
+  // Also store the original isAnimated flags if you want
+  // (some might want to forcibly animate everything, but we assume shapes with isAnimated = true only)
+  // We'll just keep them as is.
+
+  // We do a quick offline loop
+  for (let f = 0; f < totalFrames; f++) {
+    // 1) Update all shapes by frameDelay
+    update(frameDelay); 
+    // 2) Draw to the canvas
+    drawAll();
+    // 3) Add frame to GIF
+    gifExporter.addFrame(frameDelay);
+  }
+
+  // Finish
+  gifExporter.render();
+
+  // Optional: restore dashOffset or lastTime if needed
+  dashOffset = oldDashOffset;
+  lastTime = oldLastTime;
+}
+
+/////////////////////////////////////////////////
+// Other Functions (Arrows, Resizing, UI events)
+/////////////////////////////////////////////////
 function drawTempLine(context, x1, y1, x2, y2) {
   context.save();
   context.setLineDash([6, 4]);
-  context.lineDashOffset = exportingGif ? exportDashOffset : -dashOffset;
+  context.lineDashOffset = -(dashOffset % 10);
   context.strokeStyle = "blue";
   context.lineWidth = 1.5;
   context.beginPath();
@@ -714,14 +1131,14 @@ function drawTempLine(context, x1, y1, x2, y2) {
 
 function drawArrowFull(context, arrow) {
   context.save();
+  // Thicken line if hovered or selected
   if (arrow === hoveredArrow || arrow === selectedArrow) {
     context.lineWidth = (arrow.lineWidth || 2) + 2;
   } else {
     context.lineWidth = arrow.lineWidth || 2;
   }
   context.setLineDash([6, 4]);
-  const effectiveDashOffset = exportingGif ? exportDashOffset : dashOffset;
-  context.lineDashOffset = -(effectiveDashOffset % 10);
+  context.lineDashOffset = -(dashOffset % 10);
   context.strokeStyle = arrow.color || "#000";
   context.beginPath();
   let startPoint = { x: arrow.fromX, y: arrow.fromY };
@@ -747,6 +1164,7 @@ function drawArrowFull(context, arrow) {
     points.push(...arrow.waypoints);
   }
   points.push(endPoint);
+
   if (arrow.curve && points.length >= 2) {
     let curvePoints = getCatmullRomCurvePoints(points, 20);
     context.moveTo(points[0].x, points[0].y);
@@ -775,9 +1193,7 @@ function drawArrowFull(context, arrow) {
 
 function drawArrowhead(ctx, fromX, fromY, toX, toY, color = "#000000") {
   const headLen = 10;
-  const angle = Math.atan2(toY - fromY, toX - fromX
-
-  );
+  const angle = Math.atan2(toY - fromY, toX - fromX);
   ctx.save();
   ctx.translate(toX, toY);
   ctx.rotate(angle);
@@ -822,7 +1238,8 @@ function getEdgeIntersection(shape, targetX, targetY) {
     return null;
   }
   const candidates = [];
-  [ intersectSide(left, true),
+  [
+    intersectSide(left, true),
     intersectSide(right, true),
     intersectSide(top, false),
     intersectSide(bottom, false)
@@ -964,6 +1381,7 @@ function resizeShape(shape, handleIndex, mx, my) {
   shape.height = Math.max(newHeight, 20);
 }
 
+// Basic Catmull-Rom curve for arrow path
 function getCatmullRomCurvePoints(pts, numSegments) {
   let curvePts = [];
   for (let i = 0; i < pts.length - 1; i++) {
@@ -988,244 +1406,22 @@ function getCatmullRomCurvePoints(pts, numSegments) {
   return curvePts;
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  canvas = document.getElementById("myCanvas");
-  ctx = canvas.getContext("2d", { willReadFrequently: true });
-  const cManager = new CanvasManager(canvas);
-  cManager.adjustCanvasZoom();
-  window.addEventListener("resize", () => cManager.adjustCanvasZoom());
-  shapeManager = new ShapeManager();
-  arrowManager = new ArrowManager();
-  historyManager = new HistoryManager();
-  shapeEditorInput = document.getElementById("shapeEditor");
-  arrowColorPicker = document.getElementById("arrowColorPicker");
-  fillColorPicker = document.getElementById("fillColorPicker");
-  lineThicknessPicker = document.getElementById("lineThicknessPicker");
-  fontSizeSelect = document.getElementById("fontSizeSelect");
-  fontFamilySelect = document.getElementById("fontFamilySelect");
-  textColorPicker = document.getElementById("textColorPicker");
-
-  document.getElementById("toolSelect").addEventListener("click", () => {
-    currentTool = "select";
-    clearEditor();
-  });
-  document.getElementById("toolRect").addEventListener("click", () => {
-    currentTool = "rect";
-    clearEditor();
-  });
-  document.getElementById("toolArrow").addEventListener("click", () => {
-    currentTool = "arrow";
-    clearEditor();
-  });
-  document.getElementById("toolFreeArrow").addEventListener("click", () => {
-    currentTool = "freeArrow";
-    clearEditor();
-  });
-  document.getElementById("toolText").addEventListener("click", () => {
-    currentTool = "text";
-    clearEditor();
-  });
-  document.getElementById("exportGifBtn").addEventListener("click", exportAnimatedGif);
-  document.getElementById("saveBtn").addEventListener("click", saveDiagram);
-  document.getElementById("loadBtn").addEventListener("click", loadDiagramFromFile);
-
-  arrowColorPicker.addEventListener("input", e => {
-    if (selectedArrow) {
-      selectedArrow.color = e.target.value;
-    } else if (selectedShape) {
-      selectedShape.color = e.target.value;
-      selectedShape.lastUsedColors.line = e.target.value;
-    }
-    requestRender();
-  });
-  fillColorPicker.addEventListener("input", e => {
-    if (selectedShape) {
-      if (selectedShape instanceof TextShape) return;
-      if (selectedShape instanceof ImageShape) return;
-      if (selectedShape instanceof AnimatedGifShape) return;
-      selectedShape.fillColor = e.target.value;
-      selectedShape.lastUsedColors.fill = e.target.value;
-      requestRender();
-    }
-  });
-  lineThicknessPicker.addEventListener("input", e => {
-    if (selectedArrow) {
-      selectedArrow.lineWidth = parseInt(e.target.value);
-    } else if (selectedShape) {
-      selectedShape.lineWidth = parseInt(e.target.value);
-    }
-  });
-  textColorPicker.addEventListener("input", e => {
-    if (selectedShape) {
-      if (selectedShape instanceof ImageShape) return;
-      if (selectedShape instanceof AnimatedGifShape) return;
-      selectedShape.textColor = e.target.value;
-      selectedShape.lastUsedColors.text = e.target.value;
-      requestRender();
-    }
-  });
-  const canvasColorPicker = document.getElementById("canvasColorPicker");
-  if (canvasColorPicker) {
-    canvasColorPicker.addEventListener("input", e => {
-      canvasBgColor = e.target.value;
-      requestRender();
-    });
-  }
-  document.getElementById("opacityRange").addEventListener("input", e => {
-    if (selectedShape) {
-      selectedShape.opacity = parseFloat(e.target.value);
-      requestRender();
-    }
-  });
-
-  document.getElementById("animatedBorderBtn").addEventListener("click", e => {
-    if (!selectedShape) return;
-    selectedShape.isAnimated = !selectedShape.isAnimated;
-    e.target.textContent = selectedShape.isAnimated ? "On" : "Off";
-  });
-  document.getElementById("btnRemoveWhite").addEventListener("click", removeWhiteBG);
-  document.getElementById("btnRemoveColor").addEventListener("click", removeColorBG);
-  document.getElementById("toggleCurveBtn").addEventListener("click", e => {
-    if (selectedArrow) {
-      selectedArrow.curve = !selectedArrow.curve;
-      e.target.textContent = selectedArrow.curve ? "Curve" : "Straight";
-    }
-  });
-  const undoBtn = document.getElementById("undoBtn");
-  undoBtn.addEventListener("click", () => {
-    historyManager.undo();
-    requestRender();
-  });
-  const redoBtn = document.getElementById("redoBtn");
-  redoBtn.addEventListener("click", () => {
-    historyManager.redo();
-    requestRender();
-  });
-
-  canvas.addEventListener("mousedown", onCanvasMouseDown);
-  canvas.addEventListener("mousemove", onCanvasMouseMove);
-  canvas.addEventListener("mouseup", onCanvasMouseUp);
-  canvas.addEventListener("dblclick", onCanvasDblClick);
-  document.addEventListener("keydown", onDocKeyDown);
-  document.addEventListener("click", () => {
-    const contextMenu = document.getElementById("context-menu");
-    contextMenu.style.display = "none";
-    hoveredArrow = null;
-    canvas.style.cursor = "default";
-  });
-  canvas.addEventListener("contextmenu", e => {
-    e.preventDefault();
-    const shape = shapeManager.findShapeUnderMouse(
-      cManager.getMousePos(e).x,
-      cManager.getMousePos(e).y
-    );
-    if (shape) {
-      selectedShape = shape;
-      const menu = document.getElementById("context-menu");
-      menu.style.left = e.clientX + "px";
-      menu.style.top = e.clientY + "px";
-      menu.style.display = "block";
-    }
-  });
-  document.getElementById("ctx-bring-forward").addEventListener("click", () => {
-    if (selectedShape) {
-      bringShapeForward(selectedShape);
-    }
-    document.getElementById("context-menu").style.display = "none";
-  });
-  document.getElementById("ctx-send-backward").addEventListener("click", () => {
-    if (selectedShape) {
-      sendShapeBackward(selectedShape);
-    }
-    document.getElementById("context-menu").style.display = "none";
-  });
-  document.getElementById("ctx-bring-front").addEventListener("click", () => {
-    if (selectedShape) {
-      bringShapeToFront(selectedShape);
-    }
-    document.getElementById("context-menu").style.display = "none";
-  });
-  document.getElementById("ctx-send-back").addEventListener("click", () => {
-    if (selectedShape) {
-      sendShapeToBack(selectedShape);
-    }
-    document.getElementById("context-menu").style.display = "none";
-  });
-  document.getElementById("ctx-delete").addEventListener("click", () => {
-    if (selectedShape) {
-      historyManager.execute(
-        new DeleteShapeCommand(selectedShape, shapeManager, arrowManager)
-      );
-      selectedShape = null;
-    } else if (selectedArrow) {
-      historyManager.execute(new DeleteArrowCommand(selectedArrow, arrowManager));
-      selectedArrow = null;
-    }
-    document.getElementById("context-menu").style.display = "none";
-    requestRender();
-  });
-  document.addEventListener("paste", onDocPaste);
-
-  canvas.addEventListener("dragover", e => {
-    e.preventDefault();
-  });
-  canvas.addEventListener("drop", onCanvasDrop);
-
-  requestRender();
-
-  fontSizeSelect.addEventListener("change", e => {
-    if (selectedShape) {
-      selectedShape.fontSize = parseInt(e.target.value);
-      if (selectedShape instanceof TextShape) {
-        // Update text shape width after font size change
-        const tempCtx = document.createElement("canvas").getContext("2d");
-        tempCtx.font = `${selectedShape.fontSize}px ${selectedShape.fontFamily}`;
-        const metrics = tempCtx.measureText(selectedShape.text);
-        selectedShape.width = metrics.width;
-        selectedShape.height = selectedShape.fontSize;
-      }
-      requestRender();
-    }
-  });
-
-  fontFamilySelect.addEventListener("change", e => {
-    if (selectedShape) {
-      selectedShape.fontFamily = e.target.value;
-      if (selectedShape instanceof TextShape) {
-        // Update text shape width after font family change
-        const tempCtx = document.createElement("canvas").getContext("2d");
-        tempCtx.font = `${selectedShape.fontSize}px ${selectedShape.fontFamily}`;
-        const metrics = tempCtx.measureText(selectedShape.text);
-        selectedShape.width = metrics.width;
-        selectedShape.height = selectedShape.fontSize;
-      }
-      requestRender();
-    }
-  });
-});
-
 function onCanvasMouseDown(e) {
-  const cRect = canvas.getBoundingClientRect();
-  const scaleMatch = canvas.style.transform.match(/scale\((.*?)\)/);
-  const scaleVal = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
-  const mx = (e.clientX - cRect.left) / scaleVal;
-  const my = (e.clientY - cRect.top) / scaleVal;
+  const pos = getMousePosScaled(e);
+  const mx = pos.x;
+  const my = pos.y;
 
-  // First, if an arrow is already selected and it has waypoints,
-  // check if the user clicked on one of its waypoint handles.
+  // If arrow has a selected waypoint, check for grabbing it
   if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length) {
     for (let i = 0; i < selectedArrow.waypoints.length; i++) {
       if (isPointNearPoint(mx, my, selectedArrow.waypoints[i].x, selectedArrow.waypoints[i].y, arrowManager.ARROW_HANDLE_SIZE)) {
         selectedWaypointIndex = i;
-        requestRender();
         return;
       }
     }
   }
 
-  // **NEW:** In select mode, check if the click is on the endpoint handle of any free arrow.
-  // This ensures that if a free arrow (even one with waypoints) is clicked near an endpoint,
-  // we initiate endpoint dragging rather than moving the entire arrow.
+  // Check if clicked arrow endpoints
   if (currentTool === "select") {
     for (let arrow of arrowManager.arrows) {
       if (arrow.fromId === undefined) {
@@ -1233,21 +1429,19 @@ function onCanvasMouseDown(e) {
           selectedArrow = arrow;
           isDraggingArrowHandle = true;
           draggedHandle = "start";
-          requestRender();
           return;
         }
         if (isPointNearPoint(mx, my, arrow.toX, arrow.toY, arrowManager.ARROW_HANDLE_SIZE)) {
           selectedArrow = arrow;
           isDraggingArrowHandle = true;
           draggedHandle = "end";
-          requestRender();
           return;
         }
       }
     }
   }
 
-  // If not dragging a handle, use the regular arrow selection to select the whole arrow.
+  // If not dragging endpoint, try selecting arrow body
   if (currentTool === "select") {
     const clickedArrow = arrowManager.findArrowUnderMouse(mx, my, getArrowSegments);
     if (clickedArrow) {
@@ -1257,47 +1451,43 @@ function onCanvasMouseDown(e) {
       isDraggingArrow = true;
       dragStartX = mx;
       dragStartY = my;
-      requestRender();
       return;
     }
   }
 
-  // (The rest of the function stays as before—for handling free arrow creation,
-  // shapes dragging, and creating new rectangles or text.)
+  // Free arrow drawing
   if (currentTool === "freeArrow") {
     isDrawingFreeArrow = true;
     freeArrowStart = { x: mx, y: my };
     currentFreeArrowPos = { x: mx, y: my };
-    requestRender();
     return;
   }
 
+  // Resizing shape?
   if (selectedShape) {
     const hIdx = getHandleIndexAtPos(selectedShape, mx, my);
     if (hIdx !== -1) {
       isResizing = true;
       resizeHandleIndex = hIdx;
-      requestRender();
       return;
     }
   }
   
+  // If we clicked a shape
   const clickedShape = shapeManager.findShapeUnderMouse(mx, my);
   if (clickedShape) {
     if (currentTool === "select") {
-      selectedArrow = null; // Clear previous arrow selection
+      selectedArrow = null;
       selectedShape = clickedShape;
       draggingShape = clickedShape;
       dragOffsetX = mx - clickedShape.x;
       dragOffsetY = my - clickedShape.y;
       updateShapeControls(clickedShape);
-      requestRender();
       return;
     }
   } else {
     selectedShape = null;
     selectedArrow = null;
-    requestRender();
   }
 
   if (currentTool === "rect") {
@@ -1305,7 +1495,6 @@ function onCanvasMouseDown(e) {
     if (shapeText !== null) {
       const newShape = new Shape(mx - 50, my - 25, 100, 50, shapeText);
       historyManager.execute(new AddShapeCommand(newShape, shapeManager));
-      requestRender();
     }
   } else if (currentTool === "arrow") {
     const startShape = shapeManager.findShapeUnderMouse(mx, my);
@@ -1313,7 +1502,6 @@ function onCanvasMouseDown(e) {
       isDrawingLine = true;
       arrowStartShape = startShape;
       arrowEndPos = { x: mx, y: my };
-      requestRender();
     }
   } else if (currentTool === "text") {
     const shapeText = prompt("Enter your text:", "New Text");
@@ -1322,74 +1510,65 @@ function onCanvasMouseDown(e) {
       const fontFamily = fontFamilySelect.value || "Arial";
       const newTextShape = new TextShape(mx, my, shapeText, fontSize, fontFamily);
       historyManager.execute(new AddShapeCommand(newTextShape, shapeManager));
-      requestRender();
     }
   }
 }
 
 function onCanvasMouseMove(e) {
-  const cRect = canvas.getBoundingClientRect();
-  const scaleMatch = canvas.style.transform.match(/scale\((.*?)\)/);
-  const scaleVal = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
-  const mx = (e.clientX - cRect.left) / scaleVal;
-  const my = (e.clientY - cRect.top) / scaleVal;
+  const pos = getMousePosScaled(e);
+  const mx = pos.x;
+  const my = pos.y;
 
-  // If dragging a waypoint handle
+  // Move a waypoint
   if (selectedWaypointIndex !== -1 && selectedArrow && selectedArrow.waypoints) {
     selectedArrow.waypoints[selectedWaypointIndex] = { x: mx, y: my };
-    requestRender();
     return;
   }
 
-  // If dragging an endpoint (the control dot)
+  // Dragging arrow endpoint
   if (isDraggingArrowHandle && selectedArrow) {
     if (draggedHandle === "start") {
       if (selectedArrow.fromId !== undefined) {
-        selectedArrow.fromId = undefined; // detach from shape
+        selectedArrow.fromId = undefined; // detach
       }
       selectedArrow.fromX = mx;
       selectedArrow.fromY = my;
     } else if (draggedHandle === "end") {
       if (selectedArrow.toId !== undefined) {
-        selectedArrow.toId = undefined; // detach from shape
+        selectedArrow.toId = undefined;
       }
       selectedArrow.toX = mx;
       selectedArrow.toY = my;
     }
-    requestRender();
     return;
   }
 
-  // Regular free arrow drawing
+  // Drawing a free arrow
   if (isDrawingFreeArrow && freeArrowStart) {
     currentFreeArrowPos = { x: mx, y: my };
-    requestRender();
     return;
   }
 
-  // ** NEW: Update temporary arrow line drawing **
+  // Updating temporary arrow line
   if (isDrawingLine && arrowStartShape) {
     arrowEndPos = { x: mx, y: my };
-    requestRender();
     return;
   }
 
-  // Resizing a shape
+  // Resizing shape
   if (isResizing && selectedShape) {
     resizeShape(selectedShape, resizeHandleIndex, mx, my);
-    requestRender();
     return;
   }
 
-  // Dragging a shape
+  // Moving shape
   if (draggingShape) {
     draggingShape.x = mx - dragOffsetX;
     draggingShape.y = my - dragOffsetY;
-    requestRender();
     return;
   }
-  
-  // If dragging the entire arrow (body)
+
+  // Dragging arrow
   if (isDraggingArrow && selectedArrow && selectedArrow.fromId === undefined) {
     const dx = mx - dragStartX;
     const dy = my - dragStartY;
@@ -1397,27 +1576,23 @@ function onCanvasMouseMove(e) {
     selectedArrow.fromY += dy;
     selectedArrow.toX += dx;
     selectedArrow.toY += dy;
-    
-    if (selectedArrow.waypoints && selectedArrow.waypoints.length > 0) {
+    if (selectedArrow.waypoints && selectedArrow.waypoints.length) {
       for (let i = 0; i < selectedArrow.waypoints.length; i++) {
         selectedArrow.waypoints[i].x += dx;
         selectedArrow.waypoints[i].y += dy;
       }
     }
-    
     dragStartX = mx;
     dragStartY = my;
-    requestRender();
     return;
   }
-  
-  // Hover detection for arrow body.
+
+  // Hover detection for arrow
   if (!draggingShape && !isDrawingLine && !isDraggingArrow && selectedWaypointIndex === -1) {
     const arrow = arrowManager.findArrowUnderMouse(mx, my, getArrowSegments);
     if (arrow !== hoveredArrow) {
       hoveredArrow = arrow;
       canvas.style.cursor = arrow ? "pointer" : "default";
-      requestRender();
     }
   }
 }
@@ -1426,22 +1601,18 @@ function onCanvasMouseUp(e) {
   if (draggingShape) {
     draggingShape = null;
   }
-  if (isDraggingWaypoint || isDraggingEndpoint) {
+  if (isDraggingWaypoint) {
     isDraggingWaypoint = false;
-    isDraggingEndpoint = false;
     selectedWaypointIndex = -1;
-    draggedHandle = null;
-    requestRender();
     return;
   }
   if (isResizing) {
     isResizing = false;
     resizeHandleIndex = -1;
-    requestRender();
   }
-  if (draggingShape) {
-    draggingShape = null;
-    requestRender();
+  if (isDraggingArrowHandle) {
+    isDraggingArrowHandle = false;
+    draggedHandle = null;
   }
   if (isDrawingLine) {
     const pos = getMousePosScaled(e);
@@ -1455,7 +1626,6 @@ function onCanvasMouseUp(e) {
         lineWidth: parseInt(lineThicknessPicker.value) || 2
       };
       historyManager.execute(new AddArrowCommand(arrowObj, arrowManager));
-      requestRender();
     }
     isDrawingLine = false;
     arrowStartShape = null;
@@ -1477,20 +1647,13 @@ function onCanvasMouseUp(e) {
     isDrawingFreeArrow = false;
     freeArrowStart = null;
     currentFreeArrowPos = null;
-    requestRender();
     return;
   }
-  if (isDraggingArrowHandle) {
-    isDraggingArrowHandle = false;
-    draggedHandle = null;
-    requestRender();
-  }
-  selectedWaypointIndex = -1;
   if (isDraggingArrow) {
     isDraggingArrow = false;
-    requestRender();
     return;
   }
+  selectedWaypointIndex = -1;
 }
 
 function onCanvasDblClick(e) {
@@ -1498,24 +1661,18 @@ function onCanvasDblClick(e) {
   const shape = shapeManager.findShapeUnderMouse(pos.x, pos.y);
   if (shape) {
     shapeEditorInput.style.display = "block";
-    
-    // Get the canvas scale for proper positioning
     const scaleMatch = canvas.style.transform.match(/scale\((.*?)\)/);
     const scaleVal = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
-    
-    // Position the editor directly over the shape's text
     const canvasRect = canvas.getBoundingClientRect();
     if (shape instanceof TextShape) {
       shapeEditorInput.style.left = (canvasRect.left + shape.x * scaleVal) + "px";
       shapeEditorInput.style.top = (canvasRect.top + shape.y * scaleVal) + "px";
     } else {
-      // For regular shapes, center the input over the shape
       const centerX = shape.x + shape.width / 2;
       const centerY = shape.y + shape.height / 2;
       shapeEditorInput.style.left = (canvasRect.left + centerX * scaleVal - shapeEditorInput.offsetWidth / 2) + "px";
       shapeEditorInput.style.top = (canvasRect.top + centerY * scaleVal - shapeEditorInput.offsetHeight / 2) + "px";
     }
-    
     shapeEditorInput.value = shape.text || "";
     shapeEditorInput.focus();
     shapeEditorInput.onkeydown = evt => {
@@ -1546,7 +1703,6 @@ function onCanvasDblClick(e) {
     let minDistance = Infinity;
     let bestSegmentIndex = -1;
     
-    // For curved arrows, check distance to each segment
     if (selectedArrow.curve) {
       for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
@@ -1556,20 +1712,15 @@ function onCanvasDblClick(e) {
           bestSegmentIndex = i;
         }
       }
-      
-      // Use a tighter threshold for curved lines (e.g., 8 pixels instead of 15)
       if (minDistance <= 8) {
         if (!selectedArrow.waypoints) {
           selectedArrow.waypoints = [];
         }
-        
-        // Calculate insertion index based on total number of segments
         const insertionIndex = Math.floor(bestSegmentIndex / (segments.length / (selectedArrow.waypoints.length + 1)));
         selectedArrow.waypoints.splice(insertionIndex, 0, { x: pos.x, y: pos.y });
-        requestRender();
       }
     } else {
-      // ... existing straight line handling ...
+      // Straight lines
       for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
         if (isPointNearLine(pos.x, pos.y, seg.x1, seg.y1, seg.x2, seg.y2, 15)) {
@@ -1590,23 +1741,18 @@ function onCanvasDblClick(e) {
   }
 }
 
-// Add this new helper function
 function distanceToLineSegment(px, py, x1, y1, x2, y2) {
   const A = px - x1;
   const B = py - y1;
   const C = x2 - x1;
   const D = y2 - y1;
-
   const dot = A * C + B * D;
   const len_sq = C * C + D * D;
   let param = -1;
-
   if (len_sq !== 0) {
     param = dot / len_sq;
   }
-
   let xx, yy;
-
   if (param < 0) {
     xx = x1;
     yy = y1;
@@ -1617,7 +1763,6 @@ function distanceToLineSegment(px, py, x1, y1, x2, y2) {
     xx = x1 + param * C;
     yy = y1 + param * D;
   }
-
   const dx = px - xx;
   const dy = py - yy;
   return Math.sqrt(dx * dx + dy * dy);
@@ -1672,7 +1817,6 @@ function onDocPaste(e) {
             const y = (rect.height / 2 - img.height / 2) / scaleVal;
             const newShape = new ImageShape(x, y, img.width, img.height, img);
             historyManager.execute(new AddShapeCommand(newShape, shapeManager));
-            requestRender();
           };
           img.src = evt.target.result;
         };
@@ -1709,7 +1853,6 @@ function onCanvasDrop(e) {
           const animated = new AnimatedGifShape(dropX, dropY, frames, 1);
           animated.gifSrc = dataUrl;
           shapeManager.addShape(animated);
-          requestRender();
         };
         fileReaderDataURL.readAsDataURL(file);
       } catch (err) {
@@ -1724,7 +1867,6 @@ function onCanvasDrop(e) {
       img.onload = () => {
         const imageShape = new ImageShape(dropX, dropY, img.width, img.height, img);
         shapeManager.addShape(imageShape);
-        requestRender();
       };
       img.src = evt.target.result;
     };
@@ -1745,7 +1887,6 @@ function clearEditor() {
   shapeEditorInput.onblur = null;
 }
 
-// Modified updateShapeText function to avoid resetting the width
 function updateShapeText(shape, newText) {
   const oldText = shape.text;
   shape.text = newText;
@@ -1812,45 +1953,12 @@ function getArrowSegments(arrow) {
   return segments;
 }
 
-function getArrowPoints(arrow) {
-  let pts = [];
-  if (arrow.fromId !== undefined) {
-    const fromShape = shapeManager.findShapeById(arrow.fromId);
-    const toShape = shapeManager.findShapeById(arrow.toId);
-    if (!fromShape || !toShape) return pts;
-    let startTarget = arrow.waypoints && arrow.waypoints.length
-      ? arrow.waypoints[0]
-      : toShape.getCenter();
-    let endTarget = arrow.waypoints && arrow.waypoints.length
-      ? arrow.waypoints[arrow.waypoints.length - 1]
-      : fromShape.getCenter();
-    pts.push(getEdgeIntersection(fromShape, startTarget.x, startTarget.y));
-  } else {
-    pts.push({ x: arrow.fromX, y: arrow.fromY });
-  }
-  if (arrow.waypoints && arrow.waypoints.length) {
-    pts.push(...arrow.waypoints);
-  }
-  if (arrow.fromId !== undefined) {
-    const toShape = shapeManager.findShapeById(arrow.toId);
-    const fromShape = shapeManager.findShapeById(arrow.fromId);
-    let endTarget = arrow.waypoints && arrow.waypoints.length
-      ? arrow.waypoints[arrow.waypoints.length - 1]
-      : fromShape.getCenter();
-    pts.push(getEdgeIntersection(toShape, endTarget.x, endTarget.y));
-  } else {
-    pts.push({ x: arrow.toX, y: arrow.toY });
-  }
-  return pts;
-}
-
 function bringShapeForward(shape) {
   const idx = shapeManager.shapes.indexOf(shape);
   if (idx >= 0 && idx < shapeManager.shapes.length - 1) {
     shapeManager.shapes.splice(idx, 1);
     shapeManager.shapes.splice(idx + 1, 0, shape);
   }
-  requestRender();
 }
 
 function sendShapeBackward(shape) {
@@ -1859,7 +1967,6 @@ function sendShapeBackward(shape) {
     shapeManager.shapes.splice(idx, 1);
     shapeManager.shapes.splice(idx - 1, 0, shape);
   }
-  requestRender();
 }
 
 function bringShapeToFront(shape) {
@@ -1868,7 +1975,6 @@ function bringShapeToFront(shape) {
     shapeManager.shapes.splice(idx, 1);
     shapeManager.shapes.push(shape);
   }
-  requestRender();
 }
 
 function sendShapeToBack(shape) {
@@ -1877,7 +1983,6 @@ function sendShapeToBack(shape) {
     shapeManager.shapes.splice(idx, 1);
     shapeManager.shapes.unshift(shape);
   }
-  requestRender();
 }
 
 function removeWhiteBG() {
@@ -1974,68 +2079,6 @@ function removeColorBG() {
     dialog.close();
     dialog.remove();
   };
-}
-
-function exportAnimatedGif() {
-  exportingGif = true;
-  exportDashOffset = dashOffset;
-  let gifExporter = new GifExporter(
-    canvas,
-    p => {},
-    blob => {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "animated_diagram.gif";
-      link.click();
-      URL.revokeObjectURL(url);
-      exportingGif = false;
-      gifExporter = null;
-    }
-  );
-  let hasAnimatedContent = false;
-  let longestCycle = 0;
-  let shortestDelay = Infinity;
-  shapeManager.shapes.forEach(s => {
-    if (s instanceof AnimatedGifShape && s.imageFrames) {
-      hasAnimatedContent = true;
-      let totalDelay = 0;
-      s.imageFrames.forEach(f => {
-        const d = f.delay || 100;
-        totalDelay += d;
-        shortestDelay = Math.min(shortestDelay, d);
-      });
-      longestCycle = Math.max(longestCycle, totalDelay);
-    }
-    if (s.isAnimated) {
-      hasAnimatedContent = true;
-      longestCycle = Math.max(longestCycle, 500);
-      shortestDelay = Math.min(shortestDelay, 50);
-    }
-  });
-  if (!hasAnimatedContent) {
-    longestCycle = 500;
-    shortestDelay = 50;
-  }
-  shortestDelay = Math.max(20, Math.min(shortestDelay, 100));
-  const frameDelay = shortestDelay;
-  const numFrames = Math.ceil(longestCycle / frameDelay);
-  let frameCount = 0;
-  let lastCapture = 0;
-  function captureFrame(timestamp) {
-    if (frameCount >= numFrames) {
-      gifExporter.render();
-      return;
-    }
-    if (timestamp - lastCapture >= frameDelay) {
-      gifExporter.addFrame(frameDelay);
-      lastCapture = timestamp;
-      frameCount++;
-      exportDashOffset += 2;
-    }
-    requestAnimationFrame(captureFrame);
-  }
-  requestAnimationFrame(captureFrame);
 }
 
 function saveDiagram() {
@@ -2232,7 +2275,6 @@ async function importDiagram(jsonText) {
     if (canvasColorPicker) {
       canvasColorPicker.value = canvasBgColor;
     }
-    requestRender();
   } catch (err) {
     console.error("Error parsing diagram JSON:", err);
   }
@@ -2252,13 +2294,14 @@ async function createAnimatedGifShape(sd) {
   ags.lineWidth = sd.lineWidth || 2;
   ags.opacity = sd.opacity !== undefined ? sd.opacity : 1;
   ags.gifSrc = sd.gifSrc;
-  ags.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : false;
+  ags.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : true; // <-- Set this to true so frames update
   return ags;
 }
 
 function shapeFromSerializable(sd) {
   let newShape;
   if (sd.type === "AnimatedGifShape") {
+    // Typically won't happen because we do createAnimatedGifShape, but fallback:
     newShape = new Shape(sd.x, sd.y, sd.width, sd.height, "");
   } else if (sd.type === "ImageShape") {
     const img = new Image();
@@ -2277,10 +2320,9 @@ function shapeFromSerializable(sd) {
   newShape.textColor = sd.textColor || "#000";
   newShape.fillColor = sd.fillColor || "#e8f1fa";
   newShape.lineWidth = sd.lineWidth || 2;
-  newShape.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : false;
+  newShape.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : true; // <-- Set this to true so frames update
   newShape.opacity = sd.opacity !== undefined ? sd.opacity : 1;
   
-  // Restore the shape's last used colors
   newShape.lastUsedColors = sd.lastUsedColors || {
     line: newShape.color,
     fill: newShape.fillColor,
@@ -2291,14 +2333,9 @@ function shapeFromSerializable(sd) {
 }
 
 function updateShapeControls(shape) {
-  // Handle both shapes and arrows
   if (!shape && !selectedArrow) return;
 
-  // Don't update pickers if shape is an ImageShape or AnimatedGifShape
-  if (shape instanceof ImageShape || shape instanceof AnimatedGifShape) return;
-
   if (selectedArrow) {
-    // Update controls for selected arrow
     if (arrowColorPicker) {
       arrowColorPicker.value = selectedArrow.color || "#000000";
     }
@@ -2311,12 +2348,9 @@ function updateShapeControls(shape) {
     }
     return;
   }
-
-  // For TextShape, use its textColor property directly.
-  if (shape instanceof TextShape) {
-    if (textColorPicker) {
-      textColorPicker.value = shape.textColor;
-    }
+  // For shapes
+  if (shape instanceof ImageShape || shape instanceof AnimatedGifShape) {
+    // avoid updating color pickers with these shapes if you like
   } else if (shape.lastUsedColors) {
     if (arrowColorPicker) {
       arrowColorPicker.value = shape.lastUsedColors.line;
@@ -2329,7 +2363,6 @@ function updateShapeControls(shape) {
     }
   }
 
-  // Update font controls
   if (fontSizeSelect) {
     fontSizeSelect.value = shape.fontSize || "14";
   }
@@ -2337,7 +2370,6 @@ function updateShapeControls(shape) {
     fontFamilySelect.value = shape.fontFamily || "Arial";
   }
 
-  // Update other controls
   const opacityRange = document.getElementById("opacityRange");
   if (opacityRange) {
     opacityRange.value = shape.opacity || 1;
@@ -2352,5 +2384,3 @@ function updateShapeControls(shape) {
     animatedBorderBtn.textContent = shape.isAnimated ? "On" : "Off";
   }
 }
-
-
