@@ -551,7 +551,6 @@ let dashOffset = 0;
 let exportingGif = false;
 let exportDashOffset = 0;
 let canvasBgColor = "#ffffff";
-let continuousAnimationEnabled = true;
 let needsRender = true;
 let renderScheduled = false;
 let freeArrows = [];
@@ -594,23 +593,9 @@ function requestRender() {
   }
 }
 
-function shouldAnimateContinuously() {
-  if (continuousAnimationEnabled) return true;
-  if (isDrawingLine || isDrawingFreeArrow) return true;
-  for (let i = 0; i < shapeManager.shapes.length; i++) {
-    if (shapeManager.shapes[i].isAnimated) return true;
-    if (shapeManager.shapes[i] instanceof AnimatedGifShape) return true;
-  }
-  if (selectedWaypointIndex !== -1) return true;
-  if (selectedArrow || hoveredArrow) return true;
-  return false;
-}
 
 function animate() {
   renderScheduled = false;
-  if (!needsRender && !shouldAnimateContinuously()) {
-    return;
-  }
   needsRender = false;
   ctx.fillStyle = canvasBgColor;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -658,9 +643,8 @@ function animate() {
   if (!exportingGif) {
     dashOffset += 0.5;
   }
-  if (shouldAnimateContinuously()) {
-    requestRender();
-  }
+  requestRender();
+  
 }
 
 function drawTempLine(context, x1, y1, x2, y2) {
