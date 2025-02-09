@@ -1289,7 +1289,6 @@ function onCanvasMouseMove(e) {
 
   // If dragging an endpoint (the control dot)
   if (isDraggingArrowHandle && selectedArrow) {
-    // If the arrow is still connected, detach it on the dragged end.
     if (draggedHandle === "start") {
       if (selectedArrow.fromId !== undefined) {
         selectedArrow.fromId = undefined; // detach from shape
@@ -1310,6 +1309,13 @@ function onCanvasMouseMove(e) {
   // Regular free arrow drawing
   if (isDrawingFreeArrow && freeArrowStart) {
     currentFreeArrowPos = { x: mx, y: my };
+    requestRender();
+    return;
+  }
+
+  // ** NEW: Update temporary arrow line drawing **
+  if (isDrawingLine && arrowStartShape) {
+    arrowEndPos = { x: mx, y: my };
     requestRender();
     return;
   }
@@ -1338,7 +1344,6 @@ function onCanvasMouseMove(e) {
     selectedArrow.toX += dx;
     selectedArrow.toY += dy;
     
-    // Also update each waypoint (if any) so the arrow moves as a whole.
     if (selectedArrow.waypoints && selectedArrow.waypoints.length > 0) {
       for (let i = 0; i < selectedArrow.waypoints.length; i++) {
         selectedArrow.waypoints[i].x += dx;
@@ -1352,7 +1357,7 @@ function onCanvasMouseMove(e) {
     return;
   }
   
-  // Hover detection code for arrow body (not endpoints) remains below.
+  // Hover detection for arrow body.
   if (!draggingShape && !isDrawingLine && !isDraggingArrow && selectedWaypointIndex === -1) {
     const arrow = arrowManager.findArrowUnderMouse(mx, my, getArrowSegments);
     if (arrow !== hoveredArrow) {
