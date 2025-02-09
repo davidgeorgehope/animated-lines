@@ -775,7 +775,9 @@ function drawArrowFull(context, arrow) {
 
 function drawArrowhead(ctx, fromX, fromY, toX, toY, color = "#000000") {
   const headLen = 10;
-  const angle = Math.atan2(toY - fromY, toX - fromX);
+  const angle = Math.atan2(toY - fromY, toX - fromX
+
+  );
   ctx.save();
   ctx.translate(toX, toY);
   ctx.rotate(angle);
@@ -1743,17 +1745,11 @@ function clearEditor() {
   shapeEditorInput.onblur = null;
 }
 
+// Modified updateShapeText function to avoid resetting the width
 function updateShapeText(shape, newText) {
   const oldText = shape.text;
   shape.text = newText;
   historyManager.execute(new ModifyTextCommand(shape, oldText, newText));
-  if (shape instanceof TextShape) {
-    const tempCtx = document.createElement("canvas").getContext("2d");
-    tempCtx.font = `${shape.fontSize}px ${shape.fontFamily}`;
-    const metrics = tempCtx.measureText(shape.text);
-    shape.width = metrics.width;
-    shape.height = shape.fontSize;
-  }
 }
 
 function getMousePosScaled(e) {
