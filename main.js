@@ -63,6 +63,13 @@ class Shape {
     this.lineWidth = 2;
     this.isAnimated = false;
     this.opacity = 1;
+    
+    // Store last used colors for this shape
+    this.lastUsedColors = {
+      line: this.color,
+      fill: this.fillColor,
+      text: this.textColor
+    };
   }
 
   draw(ctx, dashOffset, exportingGif, exportDashOffset) {
@@ -988,12 +995,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (selectedArrow) {
       selectedArrow.color = e.target.value;
     } else if (selectedShape) {
-      if (selectedShape instanceof TextShape) {
-        selectedShape.color = e.target.value;
-      } else {
-        selectedShape.color = e.target.value;
-      }
+      selectedShape.color = e.target.value;
+      selectedShape.lastUsedColors.line = e.target.value;
     }
+    requestRender();
   });
   fillColorPicker.addEventListener("input", e => {
     if (selectedShape) {
@@ -1001,6 +1006,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (selectedShape instanceof ImageShape) return;
       if (selectedShape instanceof AnimatedGifShape) return;
       selectedShape.fillColor = e.target.value;
+      selectedShape.lastUsedColors.fill = e.target.value;
+      requestRender();
     }
   });
   lineThicknessPicker.addEventListener("input", e => {
@@ -1012,11 +1019,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   textColorPicker.addEventListener("input", e => {
     if (selectedShape) {
-      if (selectedShape instanceof TextShape) {
-        selectedShape.textColor = e.target.value;
-      } else {
-        selectedShape.textColor = e.target.value;
-      }
+      if (selectedShape instanceof ImageShape) return;
+      if (selectedShape instanceof AnimatedGifShape) return;
+      selectedShape.textColor = e.target.value;
+      selectedShape.lastUsedColors.text = e.target.value;
+      requestRender();
     }
   });
   const canvasColorPicker = document.getElementById("canvasColorPicker");
@@ -1224,8 +1231,9 @@ function onCanvasMouseDown(e) {
       draggingShape = clickedShape;
       dragOffsetX = mx - clickedShape.x;
       dragOffsetY = my - clickedShape.y;
-      // Update font controls to match selected shape
+      // Update both font and color controls
       updateFontControls(clickedShape);
+      updateColorControls(clickedShape);
       requestRender();
       return;
     }
@@ -2143,5 +2151,24 @@ function updateFontControls(shape) {
     if (opacityRange) {
       opacityRange.value = shape.opacity || 1;
     }
+  }
+}
+
+// Add after the existing updateFontControls function
+function updateColorControls(shape) {
+  if (!shape) return;
+
+  // Don't update pickers if shape is an ImageShape or AnimatedGifShape
+  if (shape instanceof ImageShape || shape instanceof AnimatedGifShape) return;
+
+  // Restore the shape's last used colors to the pickers
+  if (arrowColorPicker && shape.lastUsedColors) {
+    arrowColorPicker.value = shape.lastUsedColors.line;
+  }
+  if (fillColorPicker && shape.lastUsedColors) {
+    fillColorPicker.value = shape.lastUsedColors.fill;
+  }
+  if (textColorPicker && shape.lastUsedColors) {
+    textColorPicker.value = shape.lastUsedColors.text;
   }
 }
