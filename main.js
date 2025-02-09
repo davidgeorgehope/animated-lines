@@ -1337,6 +1337,15 @@ function onCanvasMouseMove(e) {
     selectedArrow.fromY += dy;
     selectedArrow.toX += dx;
     selectedArrow.toY += dy;
+    
+    // Also update each waypoint (if any) so the arrow moves as a whole.
+    if (selectedArrow.waypoints && selectedArrow.waypoints.length > 0) {
+      for (let i = 0; i < selectedArrow.waypoints.length; i++) {
+        selectedArrow.waypoints[i].x += dx;
+        selectedArrow.waypoints[i].y += dy;
+      }
+    }
+    
     dragStartX = mx;
     dragStartY = my;
     requestRender();
