@@ -2182,7 +2182,9 @@ function shapeToSerializable(s) {
         line: s.color,
         fill: s.fillColor,
         text: s.textColor
-      }
+      },
+      width: s.width,
+      height: s.height
     };
   } else {
     return {
@@ -2319,6 +2321,9 @@ function shapeFromSerializable(sd) {
     newShape = new ImageShape(sd.x, sd.y, sd.width, sd.height, img);
   } else if (sd.type === "TextShape") {
     newShape = new TextShape(sd.x, sd.y, sd.text, sd.fontSize, sd.fontFamily);
+    // Use fallback dimensions if they don't exist in the saved data:
+    newShape.width = sd.width || newShape.width;
+    newShape.height = sd.height || newShape.height;
   } else {
     newShape = new Shape(sd.x, sd.y, sd.width, sd.height, sd.text);
     newShape.fontSize = sd.fontSize || 14;
@@ -2330,7 +2335,7 @@ function shapeFromSerializable(sd) {
   newShape.textColor = sd.textColor || "#000";
   newShape.fillColor = sd.fillColor || "#e8f1fa";
   newShape.lineWidth = sd.lineWidth || 2;
-  newShape.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : true; // <-- Set this to true so frames update
+  newShape.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : true;
   newShape.opacity = sd.opacity !== undefined ? sd.opacity : 1;
   
   newShape.lastUsedColors = sd.lastUsedColors || {
