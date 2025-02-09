@@ -1496,15 +1496,25 @@ function onCanvasDblClick(e) {
   const shape = shapeManager.findShapeUnderMouse(pos.x, pos.y);
   if (shape) {
     shapeEditorInput.style.display = "block";
+    
+    // Get the canvas scale for proper positioning
+    const scaleMatch = canvas.style.transform.match(/scale\((.*?)\)/);
+    const scaleVal = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+    
+    // Position the editor directly over the shape's text
+    const canvasRect = canvas.getBoundingClientRect();
     if (shape instanceof TextShape) {
-      shapeEditorInput.style.left = shape.x + "px";
-      shapeEditorInput.style.top = shape.y - shape.height - 5 + "px";
-      shapeEditorInput.value = shape.text;
+      shapeEditorInput.style.left = (canvasRect.left + shape.x * scaleVal) + "px";
+      shapeEditorInput.style.top = (canvasRect.top + shape.y * scaleVal) + "px";
     } else {
-      shapeEditorInput.style.left = shape.x + "px";
-      shapeEditorInput.style.top = shape.y + shape.height + 5 + "px";
-      shapeEditorInput.value = shape.text || "";
+      // For regular shapes, center the input over the shape
+      const centerX = shape.x + shape.width / 2;
+      const centerY = shape.y + shape.height / 2;
+      shapeEditorInput.style.left = (canvasRect.left + centerX * scaleVal - shapeEditorInput.offsetWidth / 2) + "px";
+      shapeEditorInput.style.top = (canvasRect.top + centerY * scaleVal - shapeEditorInput.offsetHeight / 2) + "px";
     }
+    
+    shapeEditorInput.value = shape.text || "";
     shapeEditorInput.focus();
     shapeEditorInput.onkeydown = evt => {
       if (evt.key === "Enter") {
