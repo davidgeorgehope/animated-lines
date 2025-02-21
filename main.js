@@ -83,6 +83,7 @@ class Shape {
     this.lineWidth = 2;
     this.isAnimated = false;
     this.opacity = 1;
+    this.rotation = 0; // Rotation in radians
     
     // Store last used colors for this shape
     this.lastUsedColors = {
@@ -101,6 +102,13 @@ class Shape {
   draw(ctx, dashOffset) {
     ctx.save();
     ctx.globalAlpha = this.opacity;
+
+    // Apply rotation around shape center
+    const center = this.getCenter();
+    ctx.translate(center.x, center.y);
+    ctx.rotate(this.rotation);
+    ctx.translate(-center.x, -center.y);
+
     ctx.fillStyle = this.fillColor;
     ctx.fillRect(this.x, this.y, this.width, this.height);
     
@@ -138,7 +146,16 @@ class Shape {
   }
 
   containsPoint(px, py) {
-    return px >= this.x && px <= this.x + this.width && py >= this.y && py <= this.y + this.height;
+    // Transform the point to account for rotation
+    const center = this.getCenter();
+    const cos = Math.cos(-this.rotation);
+    const sin = Math.sin(-this.rotation);
+    const dx = px - center.x;
+    const dy = py - center.y;
+    const rx = dx * cos - dy * sin + center.x - this.x;
+    const ry = dx * sin + dy * cos + center.y - this.y;
+    
+    return rx >= 0 && rx <= this.width && ry >= 0 && ry <= this.height;
   }
 
   getCenter() {
@@ -638,6 +655,24 @@ class ModifyTextCommand extends Command {
   }
 }
 
+// Add after MoveShapeCommand
+class RotateShapeCommand extends Command {
+  constructor(shape, oldRotation, newRotation) {
+    super();
+    this.shape = shape;
+    this.oldRotation = oldRotation;
+    this.newRotation = newRotation;
+  }
+
+  execute() {
+    this.shape.rotation = this.newRotation;
+  }
+
+  undo() {
+    this.shape.rotation = this.oldRotation;
+  }
+}
+
 /////////////////////////////////////////////////
 // GifExporter Class
 /////////////////////////////////////////////////
@@ -704,6 +739,10 @@ let shapeManager, arrowManager, historyManager;
 let shapeEditorInput;
 let arrowColorPicker, fillColorPicker, lineThicknessPicker, fontSizeSelect, fontFamilySelect;
 let textColorPicker;
+
+// Add these variables at the top with other state variables
+let isRotating = false;
+let rotationStartAngle = 0;
 
 /////////////////////////////////////////////////
 // Setup & Init
@@ -1331,7 +1370,31 @@ function drawResizeHandles(ctx, shape) {
   handles.forEach(h => {
     ctx.fillRect(h.x - HANDLE_SIZE / 2, h.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
   });
+
+  // Draw rotation handle
+  const center = shape.getCenter();
+  const rotationHandleY = shape.y - 30; // 30 pixels above the shape
+  ctx.beginPath();
+  ctx.arc(center.x, rotationHandleY, HANDLE_SIZE / 2, 0, Math.PI * 2);
+  ctx.fillStyle = "green";
+  ctx.fill();
+  
+  // Draw line connecting rotation handle to shape
+  ctx.beginPath();
+  ctx.moveTo(center.x, shape.y);
+  ctx.lineTo(center.x, rotationHandleY);
+  ctx.strokeStyle = "green";
+  ctx.stroke();
+  
   ctx.restore();
+}
+
+function isRotationHandle(shape, mx, my) {
+  const center = shape.getCenter();
+  const rotationHandleY = shape.y - 30;
+  const dx = mx - center.x;
+  const dy = my - rotationHandleY;
+  return Math.sqrt(dx * dx + dy * dy) <= HANDLE_SIZE;
 }
 
 function getResizeHandles(shape) {
@@ -1420,6 +1483,14 @@ function onCanvasMouseDown(e) {
   const pos = getMousePosScaled(e);
   const mx = pos.x;
   const my = pos.y;
+
+  // Check for rotation handle first
+  if (selectedShape && isRotationHandle(selectedShape, mx, my)) {
+    isRotating = true;
+    const center = selectedShape.getCenter();
+    rotationStartAngle = Math.atan2(my - center.y, mx - center.x) - selectedShape.rotation;
+    return;
+  }
 
   // If arrow has a selected waypoint, check for grabbing it
   if (selectedArrow && selectedArrow.waypoints && selectedArrow.waypoints.length) {
@@ -1528,6 +1599,14 @@ function onCanvasMouseMove(e) {
   const pos = getMousePosScaled(e);
   const mx = pos.x;
   const my = pos.y;
+
+  // Handle rotation
+  if (isRotating && selectedShape) {
+    const center = selectedShape.getCenter();
+    const currentAngle = Math.atan2(my - center.y, mx - center.x);
+    selectedShape.rotation = currentAngle - rotationStartAngle;
+    return;
+  }
 
   // Move a waypoint
   if (selectedWaypointIndex !== -1 && selectedArrow && selectedArrow.waypoints) {
@@ -1664,6 +1743,16 @@ function onCanvasMouseUp(e) {
     return;
   }
   selectedWaypointIndex = -1;
+
+  if (isRotating) {
+    const oldRotation = rotationStartAngle;
+    const newRotation = selectedShape.rotation;
+    if (oldRotation !== newRotation) {
+      historyManager.execute(new RotateShapeCommand(selectedShape, oldRotation, newRotation));
+    }
+    isRotating = false;
+    return;
+  }
 }
 
 function onCanvasDblClick(e) {
@@ -2136,6 +2225,7 @@ function shapeToSerializable(s) {
       speedMultiplier: s.speedMultiplier,
       opacity: s.opacity !== undefined ? s.opacity : 1,
       isAnimated: s.isAnimated,
+      rotation: s.rotation || 0,
       lastUsedColors: s.lastUsedColors || {
         line: s.color,
         fill: s.fillColor,
@@ -2157,6 +2247,7 @@ function shapeToSerializable(s) {
       lineWidth: s.lineWidth,
       isAnimated: s.isAnimated,
       opacity: s.opacity !== undefined ? s.opacity : 1,
+      rotation: s.rotation || 0,
       lastUsedColors: s.lastUsedColors || {
         line: s.color,
         fill: s.fillColor,
@@ -2178,6 +2269,7 @@ function shapeToSerializable(s) {
       lineWidth: s.lineWidth,
       isAnimated: s.isAnimated,
       opacity: s.opacity !== undefined ? s.opacity : 1,
+      rotation: s.rotation || 0,
       lastUsedColors: s.lastUsedColors || {
         line: s.color,
         fill: s.fillColor,
@@ -2203,6 +2295,7 @@ function shapeToSerializable(s) {
       lineWidth: s.lineWidth,
       isAnimated: s.isAnimated,
       opacity: s.opacity !== undefined ? s.opacity : 1,
+      rotation: s.rotation || 0,
       lastUsedColors: s.lastUsedColors || {
         line: s.color,
         fill: s.fillColor,
@@ -2337,6 +2430,7 @@ function shapeFromSerializable(sd) {
   newShape.lineWidth = sd.lineWidth || 2;
   newShape.isAnimated = sd.isAnimated !== undefined ? sd.isAnimated : true;
   newShape.opacity = sd.opacity !== undefined ? sd.opacity : 1;
+  newShape.rotation = sd.rotation || 0;
   
   newShape.lastUsedColors = sd.lastUsedColors || {
     line: newShape.color,
